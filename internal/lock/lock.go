@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"os"
 	"os/exec"
 	"os/user"
@@ -16,9 +17,11 @@ import (
 )
 
 // ReadLockfile reads a lockfile from disk and parses it into a LockFile struct
-func ReadLockfile(path string) (*LockFile, error) {
+func ReadLockfile(path string, logger *logrus.Logger) (*LockFile, error) {
 	// Lockfiles are written in json format so just unmarshal it
-	lockfile := &LockFile{}
+	lockfile := &LockFile{
+		logger: logger,
+	}
 	err := readJSONFile(path, lockfile)
 	if err != nil {
 		return nil, err
@@ -27,10 +30,16 @@ func ReadLockfile(path string) (*LockFile, error) {
 	return lockfile, nil
 }
 
-func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowedUsers, allowedGroups []string) (lockfile *LockFile, err error) {
+func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowedUsers, allowedGroups []string, logger *logrus.Logger) (lockfile *LockFile, err error) {
 
 	// Use loginctl to get session information.
 	sessionID, tty, userName, uid, err := getSessionStatus()
+	logger.WithFields(logrus.Fields{
+		"session_id": sessionID,
+		"tty":        tty,
+		"user":       userName,
+		"uid":        uid,
+	}).Debug("session information")
 	if err != nil {
 		// If loginctl fails, fall back to os/user.
 		cu, err2 := user.Current()
@@ -46,6 +55,12 @@ func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowed
 	email, err := getUserEmail(userName)
 	if err != nil {
 		email = ""
+		logger.Warnf("failed to get email for user %s: %v", userName, err)
+	} else {
+		logger.WithFields(logrus.Fields{
+			"email": email,
+			"user":  userName,
+		}).Debug("email found")
 	}
 
 	return &LockFile{
@@ -59,6 +74,7 @@ func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowed
 		UnlockOnExit:  unlockOnExit,
 		AllowedUsers:  allowedUsers,
 		AllowedGroups: allowedGroups,
+		logger:        logger,
 	}, nil
 }
 
@@ -73,26 +89,38 @@ type LockFile struct {
 	UnlockOnExit  bool      `json:"unlock_on_exit" yaml:"unlock_on_exit"`
 	AllowedUsers  []string  `json:"allowed_users,omitempty" yaml:"allowed_users,omitempty"`
 	AllowedGroups []string  `json:"allowed_groups,omitempty" yaml:"allowed_groups,omitempty"`
+	logger        *logrus.Logger
 }
 
 func (lf LockFile) Remove(lockfilePath string) error {
 	if _, err := os.Stat(lockfilePath); err != nil {
+		lf.logger.WithFields(logrus.Fields{"error": err, "lockfile": lockfilePath}).Warn("failed to remove lockfile. lockfile doesn't exist")
 		return fmt.Errorf("failed to stat lockfile: %w", err)
 	}
 	// Remove the file.
+	lf.logger.WithFields(logrus.Fields{"lockfile": lockfilePath}).Debug("removing lockfile")
 	return os.Remove(lockfilePath)
 }
 
 func (lf LockFile) IsSessionFinished() bool {
 	// If no session is recorded, assume the session is over. This shouldn't happen
 	if lf.Session == "" {
+		lf.logger.WithFields(logrus.Fields{
+			"session":   lf.Session,
+			"fail_open": true,
+		}).Debug("no session found in lockfile. unlocking...")
 		return true //TODO: align this with the config.FailOpen setting
 	}
 
-	cmd := exec.Command("loginctl", "list-sessions")
+	cmd := exec.Command("/usr/bin/loginctl", "list-sessions")
 	output, err := cmd.Output()
 	if err != nil {
 		// If there's an error, we assume the session is over.
+		lf.logger.WithFields(logrus.Fields{
+			"error":     err,
+			"session":   lf.Session,
+			"fail_open": true,
+		}).Debug("failed to list sessions. unlocking...")
 		return true //TODO: align this with the config.FailOpen setting
 	}
 
@@ -117,21 +145,34 @@ func (lf LockFile) IsSessionFinished() bool {
 
 		// If we find a matching session...
 		if sessionID == lf.Session {
+			lf.logger.WithFields(logrus.Fields{
+				"session":    lf.Session,
+				"session_id": sessionID,
+				"state":      state,
+			}).Debug("found session in loginctl output")
 			// If the session is active, it's not over.
 			if state == "active" {
+				lf.logger.Debug("session is active. not unlocking.")
 				return false
 			}
 			// Otherwise, it is over.
+			lf.logger.Debug("session is not active. unlocking.")
 			return true
 		}
 	}
 
 	// If no matching session is found, assume it is over.
+	lf.logger.Debug("session not found in loginctl output. unlocking.")
 	return true
 }
 
 func (lf LockFile) IsExpired() bool {
-	return !lf.UnlockTime.IsZero() && time.Now().After(lf.UnlockTime)
+	expired := !lf.UnlockTime.IsZero() && time.Now().After(lf.UnlockTime)
+	lf.logger.WithFields(logrus.Fields{
+		"unlock_time": lf.UnlockTime,
+		"expired":     expired,
+	}).Debug("checking if lockfile is expired")
+	return expired
 }
 
 // String implements the fmt.Stringer interface to provide a pretty-printed output.
@@ -206,7 +247,7 @@ func (lf LockFile) WriteLockfile(path string) error {
 
 // FindAllLockfiles searches through all users' home directories (as determined by /etc/passwd)
 // for a file named ".system.lockfile". It returns a slice of LockFile pointers for any found.
-func FindAllLockfiles() ([]*LockFile, error) {
+func FindAllLockfiles(logger *logrus.Logger) ([]*LockFile, error) {
 	passwdPath := "/etc/passwd"
 	file, err := os.Open(passwdPath)
 	if err != nil {
@@ -229,7 +270,7 @@ func FindAllLockfiles() ([]*LockFile, error) {
 		lockfilePath := filepath.Join(homeDir, ".system.lockfile")
 		// Check if the file exists.
 		if _, err := os.Stat(lockfilePath); err == nil {
-			lf, err := ReadLockfile(lockfilePath)
+			lf, err := ReadLockfile(lockfilePath, logger)
 			if err != nil {
 				// Log the error and continue. You might also want to collect these errors.
 				fmt.Fprintf(os.Stderr, "warning: failed to read lockfile %s: %v\n", lockfilePath, err)
@@ -296,7 +337,7 @@ func getUserEmail(userName string) (string, error) {
 // getSessionStatus invokes "loginctl session-status --no-pager" and parses its output.
 // It returns the session ID, TTY, username, and UID.
 func getSessionStatus() (sessionID, tty, userName string, uid int, err error) {
-	cmd := exec.Command("loginctl", "session-status", "--no-pager")
+	cmd := exec.Command("/usr/bin/loginctl", "session-status", "--no-pager")
 	output, err := cmd.Output()
 	if err != nil {
 		return "", "", "", 0, fmt.Errorf("failed to execute loginctl: %w", err)

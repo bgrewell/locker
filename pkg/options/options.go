@@ -1,19 +1,31 @@
 package options
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/sirupsen/logrus"
+	"io"
+)
 
 // LockOptions holds the configurable options for the lock.
 type LockOptions struct {
-	AutoUnlock    bool   // Whether to auto-unlock on exit.
-	TimeUnlock    string // A date + time string for unlocking.
-	UsersAllowed  string // Comma-separated list of allowed users.
-	GroupsAllowed string // Comma-separated list of allowed groups.
-	Reason        string // Optional reason for locking.
-	Email         string // Optional email for notifications or info.
+	AutoUnlock    bool           // Whether to auto-unlock on exit.
+	TimeUnlock    string         // A date + time string for unlocking.
+	UsersAllowed  string         // Comma-separated list of allowed users.
+	GroupsAllowed string         // Comma-separated list of allowed groups.
+	Reason        string         // Optional reason for locking.
+	Email         string         // Optional email for notifications or info.
+	Logger        *logrus.Logger // Logger for debug output.
 }
 
 // Option represents a configuration function for LockOptions.
 type Option func(*LockOptions)
+
+// WithLogger configures if debug output should be shown.
+func WithLogger(logger *logrus.Logger) Option {
+	return func(lo *LockOptions) {
+		lo.Logger = logger
+	}
+}
 
 // WithAutoUnlock configures the AutoUnlock option.
 func WithAutoUnlock(auto bool) Option {
@@ -60,6 +72,8 @@ func WithEmail(email string) Option {
 // NewLockOptions creates a new LockOptions instance with defaults and applies any provided options.
 func NewLockOptions(opts ...Option) *LockOptions {
 	// Set default values.
+	nullLogger := logrus.New()
+	nullLogger.SetOutput(io.Discard)
 	lo := &LockOptions{
 		AutoUnlock:    true, // Default to true.
 		TimeUnlock:    "",
@@ -67,6 +81,7 @@ func NewLockOptions(opts ...Option) *LockOptions {
 		GroupsAllowed: "",
 		Reason:        "",
 		Email:         "",
+		Logger:        nullLogger,
 	}
 
 	// Apply each option.

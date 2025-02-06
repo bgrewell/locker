@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
+	"io"
 	"locker/internal/lock"
 	"locker/pkg"
 	"locker/pkg/options"
@@ -32,14 +34,22 @@ func main() {
 
 	// Add flags and arguments
 	help := usageBuilder.AddBooleanOption("h", "help", false, "Show this help message", "optional", nil)
+	debug := usageBuilder.AddBooleanOption("d", "debug", false, "Enable debug output", "optional", nil)
+	enable := usageBuilder.AddBooleanOption("e", "enable", false, "Enable locking on the system", "", nil)
+	disable := usageBuilder.AddBooleanOption("D", "disable", false, "Disable locking on the system", "", nil)
 	optgroup := usageBuilder.AddGroup(1, "Locking Options", "Options for locking the system")
 	autoUnlock := usageBuilder.AddBooleanOption("a", "auto-unlock", true, "Automatically unlock the system when your session ends", "optional", optgroup)
 	timeUnlock := usageBuilder.AddStringOption("t", "time-unlock", "", "Automatically unlock the system after a specified time", "optional", optgroup)
 	usersAllowed := usageBuilder.AddStringOption("u", "users-allowed", "", "Users allowed to unlock the system", "optional", optgroup)
 	groupsAllowed := usageBuilder.AddStringOption("g", "groups-allowed", "", "Groups allowed to unlock the system", "optional", optgroup)
 	reason := usageBuilder.AddStringOption("r", "reason", "", "Reason for locking the system", "optional", optgroup)
-	email := usageBuilder.AddStringOption("e", "email", "", "Email address to show users that try to access the system", "optional", optgroup)
+	email := usageBuilder.AddStringOption("m", "email", "", "Email address to show users that try to access the system", "optional", optgroup)
 	action := usageBuilder.AddArgument(1, "action", "The action to perform", "lock/unlock/authorize/status")
+
+	_ = enable
+	_ = disable
+
+	// TODO: If user is not root, then make sure the unlock message is that they have no locks (vs. the system is unlocked)
 
 	// Parse the usage
 	parsed := usageBuilder.Parse()
@@ -58,8 +68,23 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Create a new logrus logger
+	logger := logrus.New()
+	if *debug {
+		// Enable human-readable logging to stdout
+		logger.SetOutput(os.Stdout)
+		logger.SetLevel(logrus.DebugLevel)
+		logger.SetFormatter(&logrus.TextFormatter{
+			FullTimestamp: true,
+			ForceColors:   true,
+		})
+	} else {
+		// Discard all logs
+		logger.SetOutput(io.Discard)
+	}
+
 	// Find any lockfiles
-	lockfiles, err := lock.FindAllLockfiles()
+	lockfiles, err := lock.FindAllLockfiles(logger)
 	if err != nil {
 		log.Printf("Error finding lockfiles: %v", err)
 	}
@@ -72,6 +97,7 @@ func main() {
 		options.WithGroupsAllowed(*groupsAllowed),
 		options.WithReason(*reason),
 		options.WithEmail(*email),
+		options.WithLogger(logger),
 	)
 
 	// Handle the actions
@@ -93,7 +119,7 @@ func main() {
 			fmt.Println("The system is already unlocked")
 			os.Exit(1)
 		}
-		if !pkg.UserHasLockFile() {
+		if !pkg.UserHasLockFile(logger) {
 			fmt.Println("You do not have a lock on the system")
 			os.Exit(1)
 		} else {

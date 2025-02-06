@@ -2,7 +2,10 @@ module locker
 
 go 1.23.2
 
-require github.com/bgrewell/usage v0.0.0-20250206192743-f8477581f61e
+require (
+	github.com/bgrewell/usage v0.0.0-20250206192743-f8477581f61e
+	github.com/sirupsen/logrus v1.9.3
+)
 
 require (
 	github.com/fatih/color v1.16.0 // indirect

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"locker/internal/lock"
 	"locker/internal/pam"
 	"locker/pkg/options"
@@ -13,19 +14,24 @@ import (
 )
 
 func NewUserLocker(opts ...options.Option) *UserLocker {
+
+	o := options.NewLockOptions(opts...)
+
 	u, err := user.Current()
 	if err != nil {
-		panic(fmt.Errorf("failed to get current user: %w", err))
+		o.Logger.Errorf("failed to get current user: %v", err)
 	}
 	return &UserLocker{
 		User:    u,
-		Options: options.NewLockOptions(opts...),
+		Options: o,
+		Logger:  o.Logger,
 	}
 }
 
 type UserLocker struct {
 	User    *user.User
 	Options *options.LockOptions
+	Logger  *logrus.Logger
 }
 
 func (s UserLocker) Lock() (err error) {
@@ -35,68 +41,99 @@ func (s UserLocker) Lock() (err error) {
 
 	// Check if there is already a lockfile
 	if _, err := os.Stat(lockfilePath); err == nil {
+		s.Logger.Errorf("lockfile already exists at %s", lockfilePath)
 		return os.ErrExist
 	}
 
 	// Split the allowed users and groups
 	allowedUsers := strings.Split(s.Options.UsersAllowed, ",")
 	allowedGroups := strings.Split(s.Options.GroupsAllowed, ",")
+	s.Logger.WithFields(logrus.Fields{
+		"allowed_users":  allowedUsers,
+		"allowed_groups": allowedGroups,
+	}).Tracef("allowed users and groups")
 
 	// Calculate the unlock time if it is set
 	var unlockTime time.Time
 	if s.Options.TimeUnlock != "" {
 		dur, err := time.ParseDuration(s.Options.TimeUnlock)
 		if err != nil {
+			s.Logger.Errorf("failed to parse unlock time: %v", err)
 			return fmt.Errorf("failed to calculate unlock time: %w", err)
 		}
 		unlockTime = time.Now().Add(dur)
+		s.Logger.Debugf("unlock time set to %s", unlockTime)
 	}
 
 	// Create a new lockfile
-	lockfile, err := lock.NewLockFile(s.Options.Reason, unlockTime, s.Options.AutoUnlock, allowedUsers, allowedGroups)
+	lockfile, err := lock.NewLockFile(s.Options.Reason, unlockTime, s.Options.AutoUnlock, allowedUsers, allowedGroups, s.Logger)
 	if err != nil {
+		s.Logger.Errorf("failed to create lockfile: %v", err)
 		return fmt.Errorf("failed to lock: %w", err)
 	}
 
 	// Write the lockfile to disk
 	if err := lockfile.WriteLockfile(lockfilePath); err != nil {
+		s.Logger.Errorf("failed to write lockfile: %v", err)
 		return fmt.Errorf("failed to lock: %w", err)
 	}
 
+	s.Logger.WithFields(logrus.Fields{
+		"user":     s.User.Username,
+		"homedir":  s.User.HomeDir,
+		"lockfile": lockfilePath,
+	}).Debug("lockfile created")
 	return nil
 }
 
 func (s UserLocker) Unlock() (err error) {
 	// Construct the path to the lockfile.
 	lockfilePath := filepath.Join(s.User.HomeDir, ".system.lockfile")
+	s.Logger.Debugf("unlocking lockfile at %s", lockfilePath)
 
 	// Check if the file exists.
 	if _, err := os.Stat(lockfilePath); err != nil {
+		s.Logger.Warnf("lockfile does not exist at %s", lockfilePath)
 		return fmt.Errorf("failed to unlock: %w", err)
 	}
 
 	// Remove the lockfile
+	s.Logger.Debugf("removing lockfile at %s", lockfilePath)
 	return os.Remove(lockfilePath)
 }
 
 func (s UserLocker) CheckUnlockCriteria() (shouldUnlock bool, err error) {
 	// Get all lock files
-	lockfiles, err := lock.FindAllLockfiles()
+	lockfiles, err := lock.FindAllLockfiles(s.Logger)
+	s.Logger.WithFields(logrus.Fields{
+		"count": len(lockfiles),
+	}).Debug("found lockfiles")
 	if err != nil {
+		s.Logger.WithFields(logrus.Fields{
+			"error": err,
+		}).Debug("failed to find lockfiles")
 		return false, fmt.Errorf("failed to check unlock criteria: %w", err)
 	}
 
 	for _, lockfile := range lockfiles {
 		homedir, err := findUserHomeDir(lockfile.User)
 		if err != nil {
+			s.Logger.WithFields(logrus.Fields{"homedir": homedir, "error": err}).Debug("failed to find user home dir")
 			return false, fmt.Errorf("failed to check unlock criteria: %w", err)
 		}
 		lockfileLocation := filepath.Join(homedir, ".system.lockfile")
+		s.Logger.WithFields(logrus.Fields{"lockfile": lockfileLocation}).Debug("checking lockfile")
 
 		// Check to see if the file should be unlocked based on auto-unlock
 		if lockfile.IsSessionFinished() {
+			s.Logger.WithFields(logrus.Fields{
+				"user":    lockfile.User,
+				"session": lockfile.Session,
+				"trigger": "session finished",
+			}).Debug("removing lock file")
 			err = lockfile.Remove(lockfileLocation)
 			if err != nil {
+				s.Logger.WithFields(logrus.Fields{"error": err}).Debug("failed to remove lock file")
 				return false, fmt.Errorf("failed to remove lock for user %s: %w", lockfile.User, err)
 			}
 			continue
@@ -104,8 +141,14 @@ func (s UserLocker) CheckUnlockCriteria() (shouldUnlock bool, err error) {
 
 		// Check to see if the file should be unlocked based on the time
 		if lockfile.IsExpired() {
+			s.Logger.WithFields(logrus.Fields{
+				"user":    lockfile.User,
+				"session": lockfile.Session,
+				"trigger": "lock expired",
+			}).Debug("removing lock file")
 			lockfile.Remove(lockfileLocation)
 			if err != nil {
+				s.Logger.WithFields(logrus.Fields{"error": err}).Debug("failed to remove lock file")
 				return false, fmt.Errorf("failed to remove lock for user %s: %w", lockfile.User, err)
 			}
 			continue
@@ -122,10 +165,12 @@ func (s UserLocker) AuthorizeLogin() (loginAllowed bool, err error) {
 	// Check login criteria first
 	shouldUnlock, err := s.CheckUnlockCriteria()
 	if err != nil {
+		s.Logger.WithFields(logrus.Fields{"error": err}).Debug("check unlock criteria failed")
 		return false, fmt.Errorf("failed to authorize login: %w", err)
 	}
 
 	if shouldUnlock {
+		s.Logger.WithFields(logrus.Fields{"should_unlock": shouldUnlock}).Debug("unlocking system")
 		return true, nil
 	}
 
@@ -133,13 +178,23 @@ func (s UserLocker) AuthorizeLogin() (loginAllowed bool, err error) {
 	// allowed users or groups. We get the information from the PAM environment variables.
 	env := pam.GetEnvironment()
 	// TODO: Temporary for testing
-	if lockfiles, _ := lock.FindAllLockfiles(); len(lockfiles) > 0 {
+	if lockfiles, _ := lock.FindAllLockfiles(s.Logger); len(lockfiles) > 0 {
 		for _, lockfile := range lockfiles {
 			if lockfile.User == *env.User {
+				s.Logger.WithFields(logrus.Fields{
+					"user":         *env.User,
+					"lock_user":    lockfile.User,
+					"lock_session": lockfile.Session,
+					"lock_tty":     lockfile.TTY,
+				}).Debug("user is authorized to login")
 				return true, nil
 			}
 		}
 	}
+
+	s.Logger.WithFields(logrus.Fields{
+		"user": *env.User,
+	}).Debug("no access exceptions found. denying login")
 	return false, nil
 }
 
