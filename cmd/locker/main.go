@@ -49,8 +49,6 @@ func main() {
 	_ = enable
 	_ = disable
 
-	// TODO: If user is not root, then make sure the unlock message is that they have no locks (vs. the system is unlocked)
-
 	// Parse the usage
 	parsed := usageBuilder.Parse()
 	if !parsed {
@@ -131,7 +129,6 @@ func main() {
 		}
 		fmt.Println("Unlocking the system")
 	case pkg.ACTION_AUTHORIZE:
-		fmt.Println("Authorizing the user")
 		// 0 = authorized, anything else = not authorized
 		if authorized, err := locker.AuthorizeLogin(); err != nil || !authorized {
 			if err != nil {
@@ -139,7 +136,6 @@ func main() {
 			}
 			os.Exit(1)
 		} else {
-			fmt.Println("User authorized")
 			os.Exit(0)
 		}
 	case pkg.ACTION_STATUS:

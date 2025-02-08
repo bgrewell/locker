@@ -1,5 +1,25 @@
 # Locker
 
+## Components
+
+### Locker PAM Module
+
+The PAM module is a shared object that is loaded by the PAM system when a user tries to log in. The PAM module is
+designed to check the lock status of the system and deny the user access if the system is locked unless the user is in 
+the list of allowed users or groups.
+
+The primary purpose of the PAM module is to control access to the system based on the lock status of the system and to
+present useful messages to uses when it is.
+
+### Locker Service
+
+- auto-unlock: Monitors sessions and unlocks when the locking session ends
+- time-unlock: Unlocks the system at a specified time
+- idle-unlock: Unlocks the system after a specified period of inactivity
+- manual-control: Locks/Unlocks the system when a user issues the unlock command
+
+### Locker Command Line Interface
+
 ## How it works
 
 Locker allows users to request locking the system so that other users can not log in during the lock period. This tool
@@ -28,3 +48,12 @@ is locked and their login request will be denied.
 
 If the user is allowed to log in and the system is locked they will see a MOTD which contains a warning that the system
 is locked and the reason.
+
+## Building
+
+### Compile API
+
+```bash
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```

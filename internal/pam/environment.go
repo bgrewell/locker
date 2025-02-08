@@ -11,40 +11,21 @@ func GetEnvironment() *Environment {
 	ruser := os.Getenv("PAM_RUSER")
 	pamType := os.Getenv("PAM_TYPE")
 
-	var env Environment
-
-	if user != "" {
-		env.User = &user
+	return &Environment{
+		User:    user,
+		Service: service,
+		TTY:     tty,
+		RHost:   rhost,
+		RUser:   ruser,
+		PAMType: pamType,
 	}
-
-	if service != "" {
-		env.Service = &service
-	}
-
-	if tty != "" {
-		env.TTY = &tty
-	}
-
-	if rhost != "" {
-		env.RHost = &rhost
-	}
-
-	if ruser != "" {
-		env.RUser = &ruser
-	}
-
-	if pamType != "" {
-		env.PAMType = &pamType
-	}
-
-	return &env
 }
 
 type Environment struct {
-	User    *string
-	Service *string
-	TTY     *string
-	RHost   *string
-	RUser   *string
-	PAMType *string
+	User    string
+	Service string
+	TTY     string
+	RHost   string
+	RUser   string
+	PAMType string
 }

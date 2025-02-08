@@ -162,7 +162,18 @@ func (s UserLocker) CheckUnlockCriteria() (shouldUnlock bool, err error) {
 }
 
 func (s UserLocker) AuthorizeLogin() (loginAllowed bool, err error) {
+	env := pam.GetEnvironment()
+	fields := logrus.Fields{
+		"user":     env.User,
+		"service":  env.Service,
+		"tty":      env.TTY,
+		"rhost":    env.RHost,
+		"ruser":    env.RUser,
+		"pam_type": env.PAMType,
+	}
+
 	// Check login criteria first
+	s.Logger.WithFields(fields).Debug("authorizing user login")
 	shouldUnlock, err := s.CheckUnlockCriteria()
 	if err != nil {
 		s.Logger.WithFields(logrus.Fields{"error": err}).Debug("check unlock criteria failed")
@@ -170,34 +181,46 @@ func (s UserLocker) AuthorizeLogin() (loginAllowed bool, err error) {
 	}
 
 	if shouldUnlock {
-		s.Logger.WithFields(logrus.Fields{"should_unlock": shouldUnlock}).Debug("unlocking system")
+		fields["unlock"] = true
+		s.Logger.WithFields(fields).Debug("login authorized")
 		return true, nil
 	}
 
 	// Otherwise check if the user can access the system either by being the user with the lock or in the
 	// allowed users or groups. We get the information from the PAM environment variables.
-	env := pam.GetEnvironment()
 	// TODO: Temporary for testing
 	if lockfiles, _ := lock.FindAllLockfiles(s.Logger); len(lockfiles) > 0 {
 		for _, lockfile := range lockfiles {
-			if lockfile.User == *env.User {
-				s.Logger.WithFields(logrus.Fields{
-					"user":         *env.User,
-					"lock_user":    lockfile.User,
-					"lock_session": lockfile.Session,
-					"lock_tty":     lockfile.TTY,
-				}).Debug("user is authorized to login")
+			if lockfile.User == env.User {
+				fields["lock_user"] = lockfile.User
+				fields["lock_session"] = lockfile.Session
+				fields["lock_tty"] = lockfile.TTY
+				s.Logger.WithFields(fields).Debug("login authorized")
 				return true, nil
 			}
 		}
 	}
 
-	s.Logger.WithFields(logrus.Fields{
-		"user": *env.User,
-	}).Debug("no access exceptions found. denying login")
+	//// Attempt to open /dev/tty for writing
+	//tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	//if err != nil {
+	//	// If there's no TTY (non-interactive SSH?), silently exit
+	//	s.Logger.WithFields(logrus.Fields{
+	//		"error": err,
+	//	}).Debug("failed to open TTY")
+	//}
+	//defer tty.Close()
+	//
+	//// Print message to the TTY
+	//fmt.Fprintln(tty, "hello")
+
+	fmt.Printf("You are not authorized to access this system.\n")
+
+	s.Logger.WithFields(fields).Debug("access denied")
 	return false, nil
 }
 
+// findUserHomeDir finds the home directory for a given user
 func findUserHomeDir(username string) (string, error) {
 	u, err := user.Lookup(username)
 	if err != nil {

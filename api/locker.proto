@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package locker;
+
+option go_package = "github.com/bgrewell/locker/api;locker";
+
+import "google/protobuf/duration.proto";
+
+// Request message for the Lock method.
+message LockRequest {
+  // The user initiating the lock.
+  string user = 1;
+  // The user's id (as string; adjust type if needed).
+  string uid = 2;
+  // The tty (terminal) identifier.
+  string tty = 3;
+  // The session identifier.
+  string session_id = 4;
+  // List of allowed users.
+  repeated string allowed_users = 5;
+  // List of allowed groups.
+  repeated string allowed_groups = 6;
+  // Reason for locking (optional—an empty string if not provided).
+  string reason = 7;
+  // Whether to unlock on process exit.
+  bool unlock_on_exit = 8;
+  // Optional duration after which the lock should automatically unlock (e.g. "10m").
+  google.protobuf.Duration unlock_time = 9;
+  // Optional duration after which the lock is released if idle.
+  google.protobuf.Duration unlock_after_idle = 10;
+}
+
+// Response message for the Lock method.
+message LockResponse {
+  bool success = 1;
+  // An optional message (e.g. error description or confirmation).
+  string message = 2;
+}
+
+// Request message for the Unlock method (no parameters).
+message UnlockRequest {
+  // Empty.
+}
+
+// Response message for the Unlock method.
+message UnlockResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Request message for the Status method (no parameters).
+message StatusRequest {
+  // Empty.
+}
+
+// Response message for the Status method.
+message StatusResponse {
+  // Enumerated lock state.
+  enum LockState {
+    UNKNOWN = 0;
+    LOCKED = 1;
+    UNLOCKED = 2;
+  }
+  LockState state = 1;
+  // If the system is locked, include the details.
+  string user = 2;
+  string uid = 3;
+  string tty = 4;
+  string session_id = 5;
+  repeated string allowed_users = 6;
+  repeated string allowed_groups = 7;
+  string reason = 8;
+  bool unlock_on_exit = 9;
+  google.protobuf.Duration unlock_time = 10;
+  google.protobuf.Duration unlock_after_idle = 11;
+}
+
+// Request message for the Authorize method.
+message AuthorizeRequest {
+  string username = 1;
+}
+
+// Response message for the Authorize method.
+message AuthorizeResponse {
+  // True if the given username is authorized.
+  bool authorized = 1;
+  // Optional explanation (e.g. reason for denial).
+  string reason = 2;
+}
+
+// The gRPC service definition for the locker framework.
+service LockerService {
+  // Request a lock with the specified parameters.
+  rpc Lock(LockRequest) returns (LockResponse);
+  // Unlock the system; no parameters.
+  rpc Unlock(UnlockRequest) returns (UnlockResponse);
+  // Return the current status of the lock.
+  rpc Status(StatusRequest) returns (StatusResponse);
+  // Check whether a given username is authorized.
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+}
