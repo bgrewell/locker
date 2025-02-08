@@ -49,8 +49,10 @@ archives:
       {{- if .Arm }}v{{ .Arm }}{{ end }}
 
     files:
-      - LICENSE
-      - README.md
+      - ./LICENSE
+      - ./README.md
+      - service/lockerd.service
+      - config/config.yaml
 
 changelog:
   sort: asc

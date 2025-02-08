@@ -37,10 +37,10 @@ if [ -f "$TMPDIR/pam/pam_locker.so" ]; then
 fi
 
 # Install configuration file if not already present.
-if [ -f "$TMPDIR/config.yaml" ]; then
+if [ -f "$TMPDIR/config/config.yaml" ]; then
     if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
         echo "Installing default configuration to ${CONFIG_DIR}..."
-        sudo cp "$TMPDIR/config.yaml" "${CONFIG_DIR}/"
+        sudo cp "$TMPDIR/config/config.yaml" "${CONFIG_DIR}/"
     else
         echo "Configuration file already exists in ${CONFIG_DIR}, skipping."
     fi
@@ -49,9 +49,9 @@ else
 fi
 
 # Install the systemd service file.
-if [ -f "$TMPDIR/lockerd.service" ]; then
+if [ -f "$TMPDIR/service/lockerd.service" ]; then
     echo "Installing systemd service file..."
-    sudo cp "$TMPDIR/lockerd.service" "${SYSTEMD_DIR}/"
+    sudo cp "$TMPDIR/service/lockerd.service" "${SYSTEMD_DIR}/"
     sudo chmod 644 "${SYSTEMD_DIR}/lockerd.service"
 else
     echo "[WARN] lockerd.service not found in the release archive."

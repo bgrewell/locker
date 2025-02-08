@@ -1,0 +1,5 @@
+---
+lock_file_location: "/var/lib/lock"
+log_level: "info"
+fail_open: true
+grpc_address: ":50051"
