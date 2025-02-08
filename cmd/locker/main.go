@@ -117,7 +117,7 @@ func main() {
 			AllowedGroups:   []string{"testgroup"},
 			Reason:          "Testing lock",
 			UnlockOnExit:    true,
-			UnlockTime:      durationpb.New(10 * time.Minute),
+			UnlockTime:      durationpb.New(60 * time.Minute),
 			UnlockAfterIdle: durationpb.New(5 * time.Minute),
 		}
 
