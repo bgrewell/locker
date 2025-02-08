@@ -25,14 +25,14 @@ tar -xzf locker.tar.gz -C "$TMPDIR"
 
 # Install binaries to /opt/locker/bin.
 echo "Installing binaries to ${BIN_DIR}..."
-sudo cp "$TMPDIR/bin/locker" "${BIN_DIR}/"
-sudo cp "$TMPDIR/bin/lockerd" "${BIN_DIR}/"
+sudo cp "$TMPDIR/locker" "${BIN_DIR}/"
+sudo cp "$TMPDIR/lockerd" "${BIN_DIR}/"
 sudo chmod +x "${BIN_DIR}/locker" "${BIN_DIR}/lockerd"
 
 # Install PAM module if available.
-if [ -f "$TMPDIR/pam/pam_locker.so" ]; then
+if [ -f "$TMPDIR/pam_locker.so" ]; then
     echo "Installing PAM module to ${PAM_DIR}..."
-    sudo cp "$TMPDIR/pam/pam_locker.so" "${PAM_DIR}/"
+    sudo cp "$TMPDIR/pam_locker.so" "${PAM_DIR}/"
     sudo chmod 644 "${PAM_DIR}/pam_locker.so"
 fi
 
@@ -101,7 +101,49 @@ if [ -f "${PAM_DIR}/pam_locker.so" ]; then
 fi
 # --- End PAM Module Insertion ---
 
+# Automatically enable and start the systemd service.
+echo "Enabling and starting lockerd.service..."
+sudo systemctl enable lockerd.service
+sudo systemctl start lockerd.service
+
+# Create a symlink for the PAM module.
+# Determine the system's PAM module directory.
+if [ -d "/lib/security" ]; then
+    PAM_TARGET="/lib/security"
+elif [ -d "/usr/lib/security" ]; then
+    PAM_TARGET="/usr/lib/security"
+else
+    echo "[WARN] PAM module directory not found; skipping linking PAM module."
+    PAM_TARGET=""
+fi
+
+if [ -n "$PAM_TARGET" ] && [ -f "${PAM_DIR}/pam_locker.so" ]; then
+    echo "Creating symlink for PAM module in ${PAM_TARGET}..."
+    sudo ln -sf "${PAM_DIR}/pam_locker.so" "${PAM_TARGET}/pam_locker.so"
+fi
+
+# Create wrapper scripts for "lock" and "unlock" commands.
+echo "Creating wrapper script for 'lock'..."
+sudo tee /usr/local/bin/lock > /dev/null <<'EOF'
+#!/bin/bash
+/opt/locker/bin/locker lock "$@"
+EOF
+sudo chmod +x /usr/local/bin/lock
+
+echo "Creating wrapper script for 'unlock'..."
+sudo tee /usr/local/bin/unlock > /dev/null <<'EOF'
+#!/bin/bash
+/opt/locker/bin/locker unlock "$@"
+EOF
+sudo chmod +x /usr/local/bin/unlock
+
+# Create a symlink for "locker" itself.
+echo "Creating symlink for 'locker'..."
+sudo ln -sf /opt/locker/bin/locker /usr/local/bin/locker
+
 echo "Installation complete."
-echo "You can now enable and start the service with:"
-echo "  sudo systemctl enable lockerd.service"
-echo "  sudo systemctl start lockerd.service"
+echo "You can now use the following commands:"
+echo "  sudo systemctl status lockerd.service   - To check the daemon status."
+echo "  /usr/local/bin/lock                      - To lock the system."
+echo "  /usr/local/bin/unlock                    - To unlock the system."
+echo "  /usr/local/bin/locker                    - To run the locker CLI."
