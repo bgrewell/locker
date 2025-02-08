@@ -1,4 +1,5 @@
 project_name: locker
+version: 2
 
 release:
   github:
@@ -28,7 +29,7 @@ builds:
 
   - id: pam_locker
     main: ./cmd/module/main.go
-    binary: pam_locker.so
+    binary: pam_locker
     buildmode: c-shared
     goos:
       - linux
@@ -38,9 +39,15 @@ builds:
       - CGO_ENABLED=1
 
 archives:
-  - id: default
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+  - formats: ['tar.gz']
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
     files:
       - LICENSE
       - README.md
