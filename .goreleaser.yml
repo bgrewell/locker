@@ -11,6 +11,8 @@ builds:
     binary: locker
     goos:
       - linux
+    goarch:
+      - amd64
     env:
       - CGO_ENABLED=0
 
@@ -19,6 +21,8 @@ builds:
     binary: lockerd
     goos:
       - linux
+    goarch:
+      - amd64
     env:
       - CGO_ENABLED=0
 
@@ -28,6 +32,8 @@ builds:
     buildmode: c-shared
     goos:
       - linux
+    goarch:
+      - amd64
     env:
       - CGO_ENABLED=1
 
