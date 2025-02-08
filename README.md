@@ -1,5 +1,13 @@
 # Locker
 
+## Install
+
+You can quickly install locker to your system by running the following command:
+
+```bash
+curl -sL https://raw.githubusercontent.com/bgrewell/locker/main/scripts/install.sh | sudo bash
+```
+
 ## Components
 
 ### Locker PAM Module
