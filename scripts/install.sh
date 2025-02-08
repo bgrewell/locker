@@ -110,8 +110,8 @@ sudo systemctl start lockerd.service
 # Determine the system's PAM module directory.
 if [ -d "/lib/security" ]; then
     PAM_TARGET="/lib/security"
-elif [ -d "/usr/lib/security" ]; then
-    PAM_TARGET="/usr/lib/security"
+elif [ -d "/lib/x86_64-linux-gnu/security/" ]; then
+    PAM_TARGET="/lib/x86_64-linux-gnu/security/"
 else
     echo "[WARN] PAM module directory not found; skipping linking PAM module."
     PAM_TARGET=""
