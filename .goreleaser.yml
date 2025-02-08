@@ -1,0 +1,43 @@
+project_name: locker
+
+release:
+  github:
+    owner: bgrewell
+    name: locker
+
+builds:
+  - id: locker
+    main: ./cmd/locker/main.go
+    binary: locker
+    goos:
+      - linux
+    env:
+      - CGO_ENABLED=0
+
+  - id: lockerd
+    main: ./cmd/lockerd/main.go
+    binary: lockerd
+    goos:
+      - linux
+    env:
+      - CGO_ENABLED=0
+
+  - id: pam_locker
+    main: ./cmd/module/main.go
+    binary: pam_locker.so
+    buildmode: c-shared
+    goos:
+      - linux
+    env:
+      - CGO_ENABLED=1
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+changelog:
+  sort: asc

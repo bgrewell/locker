@@ -1,16 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/sirupsen/logrus"
-	"io"
-	"locker/internal/lock"
+	api "locker/api/go"
 	"locker/pkg"
-	"locker/pkg/options"
-	"log"
 	"os"
+	"time"
 
 	"github.com/bgrewell/usage"
+	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 var (
@@ -22,9 +23,9 @@ var (
 
 func main() {
 
-	// Setup application useage
+	// Setup application usage
 	usageBuilder := usage.NewUsage(
-		usage.WithApplicationName("locker"),
+		usage.WithApplicationName("api"),
 		usage.WithApplicationVersion(version),
 		usage.WithApplicationBuildDate(builddate),
 		usage.WithApplicationCommitHash(commit),
@@ -44,10 +45,17 @@ func main() {
 	groupsAllowed := usageBuilder.AddStringOption("g", "groups-allowed", "", "Groups allowed to unlock the system", "optional", optgroup)
 	reason := usageBuilder.AddStringOption("r", "reason", "", "Reason for locking the system", "optional", optgroup)
 	email := usageBuilder.AddStringOption("m", "email", "", "Email address to show users that try to access the system", "optional", optgroup)
-	action := usageBuilder.AddArgument(1, "action", "The action to perform", "lock/unlock/authorize/status")
+	action := usageBuilder.AddArgument(1, "action", "The action to perform", "lock/unlock/status")
 
+	_ = debug
 	_ = enable
 	_ = disable
+	_ = autoUnlock
+	_ = timeUnlock
+	_ = usersAllowed
+	_ = groupsAllowed
+	_ = reason
+	_ = email
 
 	// Parse the usage
 	parsed := usageBuilder.Parse()
@@ -57,7 +65,7 @@ func main() {
 	}
 
 	if action == nil || *action == "" {
-		usageBuilder.PrintError(fmt.Errorf("Action is required. Use one of lock, unlock, authorize, or status"))
+		usageBuilder.PrintError(fmt.Errorf("Action is required. Use one of lock, unlock, or status"))
 		os.Exit(1)
 	}
 
@@ -68,85 +76,96 @@ func main() {
 
 	// Create a new logrus logger
 	logger := logrus.New()
-	if *debug {
-		// Enable human-readable logging to stdout
-		logger.SetOutput(os.Stdout)
-		logger.SetLevel(logrus.DebugLevel)
-		logger.SetFormatter(&logrus.TextFormatter{
-			FullTimestamp: true,
-			ForceColors:   true,
-		})
-	} else {
-		// Discard all logs
-		logger.SetOutput(io.Discard)
+	logger.SetOutput(os.Stdout)
+	logger.SetLevel(logrus.DebugLevel)
+	logger.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+		ForceColors:   true,
+	})
+
+	// Define the gRPC server address; adjust as needed.
+	grpcAddr := "localhost:5128"
+
+	// Set a timeout duration for the RPC calls.
+	timeout := 2 * time.Second
+
+	// Common function to dial the gRPC server.
+	dialServer := func() *grpc.ClientConn {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		conn, err := grpc.DialContext(ctx, grpcAddr, grpc.WithInsecure(), grpc.WithBlock())
+		if err != nil {
+			logger.Fatalf("Failed to connect to gRPC server at %s: %v", grpcAddr, err)
+		}
+		return conn
 	}
 
-	// Find any lockfiles
-	lockfiles, err := lock.FindAllLockfiles(logger)
-	if err != nil {
-		log.Printf("Error finding lockfiles: %v", err)
-	}
-
-	// Create a locker
-	locker := pkg.NewLocker(
-		options.WithAutoUnlock(*autoUnlock),
-		options.WithTimeUnlock(*timeUnlock),
-		options.WithUsersAllowed(*usersAllowed),
-		options.WithGroupsAllowed(*groupsAllowed),
-		options.WithReason(*reason),
-		options.WithEmail(*email),
-		options.WithLogger(logger),
-	)
-
-	// Handle the actions
 	switch *action {
 	case pkg.ACTION_LOCK:
-		if len(lockfiles) > 0 {
-			fmt.Println("The system is already locked")
+		fmt.Println("Locking the system")
+		conn := dialServer()
+		defer conn.Close()
+		client := api.NewLockerServiceClient(conn)
+
+		// Build a minimal LockRequest with dummy values.
+		req := &api.LockRequest{
+			User:            "testuser",
+			Uid:             "1001",
+			Tty:             "/dev/pts/0",
+			SessionId:       "session123",
+			AllowedUsers:    []string{"testuser"},
+			AllowedGroups:   []string{"testgroup"},
+			Reason:          "Testing lock",
+			UnlockOnExit:    true,
+			UnlockTime:      durationpb.New(10 * time.Minute),
+			UnlockAfterIdle: durationpb.New(5 * time.Minute),
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		resp, err := client.Lock(ctx, req)
+		if err != nil {
+			fmt.Printf("Lock RPC failed: %v\n", err)
 			os.Exit(1)
 		}
-		err = locker.Lock()
-		if err == os.ErrExist {
-			fmt.Println("Lockfile already exists")
-		} else if err != nil {
-			panic(err)
-		}
-		fmt.Println("The system has been locked")
+		fmt.Printf("Lock RPC response: Success=%v, Message=%s\n", resp.Success, resp.Message)
+
 	case pkg.ACTION_UNLOCK:
-		if len(lockfiles) == 0 {
-			fmt.Println("The system is already unlocked")
-			os.Exit(1)
-		}
-		if !pkg.UserHasLockFile(logger) {
-			fmt.Println("You do not have a lock on the system")
-			os.Exit(1)
-		} else {
-			err := locker.Unlock()
-			if err != nil {
-				log.Printf("Error unlocking the system: %v", err)
-				os.Exit(1)
-			}
-		}
 		fmt.Println("Unlocking the system")
-	case pkg.ACTION_AUTHORIZE:
-		// 0 = authorized, anything else = not authorized
-		if authorized, err := locker.AuthorizeLogin(); err != nil || !authorized {
-			if err != nil {
-				fmt.Printf("failed to get authorization: %v\n", err)
-			}
+		conn := dialServer()
+		defer conn.Close()
+		client := api.NewLockerServiceClient(conn)
+
+		req := &api.UnlockRequest{}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		resp, err := client.Unlock(ctx, req)
+		if err != nil {
+			fmt.Printf("Unlock RPC failed: %v\n", err)
 			os.Exit(1)
-		} else {
-			os.Exit(0)
 		}
+		fmt.Printf("Unlock RPC response: Success=%v, Message=%s\n", resp.Success, resp.Message)
+
 	case pkg.ACTION_STATUS:
-		if len(lockfiles) == 0 {
-			fmt.Println("The system is unlocked")
-		} else {
-			fmt.Println("The system is locked. The following users have locks:")
-			for i, lockfile := range lockfiles {
-				fmt.Printf("%d | %s\n", i, lockfile)
-			}
+		fmt.Println("Checking the status of the system")
+		conn := dialServer()
+		defer conn.Close()
+		client := api.NewLockerServiceClient(conn)
+
+		req := &api.StatusRequest{}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		resp, err := client.Status(ctx, req)
+		if err != nil {
+			fmt.Printf("Status RPC failed: %v\n", err)
+			os.Exit(1)
 		}
+		// For minimal output, print the state.
+		fmt.Printf("Status RPC response: State=%v\n", resp.State)
+
 	default:
 		fmt.Printf("[ERROR] Unknown action: %s\n", *action)
 	}
