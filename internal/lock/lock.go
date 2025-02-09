@@ -3,7 +3,6 @@ package lock
 import (
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
 	"os"
 	"strings"
 	"time"
@@ -30,15 +29,12 @@ type LockFile struct {
 	UnlockOnIdle  time.Duration `json:"unlock_on_idle,omitempty" yaml:"unlock_on_idle,omitempty"`
 	AllowedUsers  []string      `json:"allowed_users,omitempty" yaml:"allowed_users,omitempty"`
 	AllowedGroups []string      `json:"allowed_groups,omitempty" yaml:"allowed_groups,omitempty"`
-	logger        *zap.Logger
 }
 
 // ReadLockfile reads a lockfile from disk and parses it into a LockFile struct
-func ReadLockfile(path string, logger *zap.Logger) (*LockFile, error) {
+func ReadLockfile(path string) (*LockFile, error) {
 	// Lockfiles are written in json format so just unmarshal it
-	lockfile := &LockFile{
-		logger: logger,
-	}
+	lockfile := &LockFile{}
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -77,13 +73,8 @@ func (lf LockFile) WriteLockfile(path string) error {
 // RemoveLockfile removes a lockfile from disk
 func (lf LockFile) RemoveLockfile(lockfilePath string) error {
 	if _, err := os.Stat(lockfilePath); err != nil {
-		lf.logger.Warn("failed to remove lockfile. lockfile doesn't exist",
-			zap.Error(err),
-			zap.String("lockfile", lockfilePath))
 		return fmt.Errorf("failed to stat lockfile: %w", err)
 	}
-	// RemoveLockfile the file.
-	lf.logger.Debug("removing lockfile", zap.String("lockfile", lockfilePath))
 	return os.Remove(lockfilePath)
 }
 
