@@ -10,8 +10,8 @@ import "google/protobuf/duration.proto";
 message LockRequest {
   // The user initiating the lock.
   string user = 1;
-  // The user's id (as string; adjust type if needed).
-  string uid = 2;
+  // The user's id
+  int32 uid = 2;
   // The tty (terminal) identifier.
   string tty = 3;
   // The session identifier.
@@ -22,12 +22,14 @@ message LockRequest {
   repeated string allowed_groups = 6;
   // Reason for locking (optional—an empty string if not provided).
   string reason = 7;
+  // Email address of the locking user
+  string email = 8;
   // Whether to unlock on process exit.
-  bool unlock_on_exit = 8;
+  bool unlock_on_exit = 9;
   // Optional duration after which the lock should automatically unlock (e.g. "10m").
-  google.protobuf.Duration unlock_time = 9;
+  google.protobuf.Duration unlock_time = 10;
   // Optional duration after which the lock is released if idle.
-  google.protobuf.Duration unlock_after_idle = 10;
+  google.protobuf.Duration unlock_after_idle = 11;
 }
 
 // Response message for the Lock method.
@@ -64,15 +66,16 @@ message StatusResponse {
   LockState state = 1;
   // If the system is locked, include the details.
   string user = 2;
-  string uid = 3;
+  int32 uid = 3;
   string tty = 4;
   string session_id = 5;
   repeated string allowed_users = 6;
   repeated string allowed_groups = 7;
   string reason = 8;
-  bool unlock_on_exit = 9;
-  google.protobuf.Duration unlock_time = 10;
-  google.protobuf.Duration unlock_after_idle = 11;
+  string email = 9;
+  bool unlock_on_exit = 10;
+  google.protobuf.Duration unlock_time = 11;
+  google.protobuf.Duration unlock_after_idle = 12;
 }
 
 // Request message for the Authorize method.
@@ -88,6 +91,17 @@ message AuthorizeResponse {
   string reason = 2;
 }
 
+// Request email address associated with the user.
+message EmailRequest {
+  string username = 1;
+}
+
+// Response email address associated with the user.
+message EmailResponse {
+  bool found = 1;
+  string email = 2;
+}
+
 // The gRPC service definition for the locker framework.
 service LockerService {
   // Request a lock with the specified parameters.
@@ -98,4 +112,6 @@ service LockerService {
   rpc Status(StatusRequest) returns (StatusResponse);
   // Check whether a given username is authorized.
   rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+  // Get the email address associated with a given username.
+  rpc Email(EmailRequest) returns (EmailResponse);
 }

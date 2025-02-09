@@ -23,6 +23,7 @@ const (
 	LockerService_Unlock_FullMethodName    = "/locker.LockerService/Unlock"
 	LockerService_Status_FullMethodName    = "/locker.LockerService/Status"
 	LockerService_Authorize_FullMethodName = "/locker.LockerService/Authorize"
+	LockerService_Email_FullMethodName     = "/locker.LockerService/Email"
 )
 
 // LockerServiceClient is the client API for LockerService service.
@@ -39,6 +40,8 @@ type LockerServiceClient interface {
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	// Check whether a given username is authorized.
 	Authorize(ctx context.Context, in *AuthorizeRequest, opts ...grpc.CallOption) (*AuthorizeResponse, error)
+	// Get the email address associated with a given username.
+	Email(ctx context.Context, in *EmailRequest, opts ...grpc.CallOption) (*EmailResponse, error)
 }
 
 type lockerServiceClient struct {
@@ -89,6 +92,16 @@ func (c *lockerServiceClient) Authorize(ctx context.Context, in *AuthorizeReques
 	return out, nil
 }
 
+func (c *lockerServiceClient) Email(ctx context.Context, in *EmailRequest, opts ...grpc.CallOption) (*EmailResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmailResponse)
+	err := c.cc.Invoke(ctx, LockerService_Email_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LockerServiceServer is the server API for LockerService service.
 // All implementations must embed UnimplementedLockerServiceServer
 // for forward compatibility.
@@ -103,6 +116,8 @@ type LockerServiceServer interface {
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	// Check whether a given username is authorized.
 	Authorize(context.Context, *AuthorizeRequest) (*AuthorizeResponse, error)
+	// Get the email address associated with a given username.
+	Email(context.Context, *EmailRequest) (*EmailResponse, error)
 	mustEmbedUnimplementedLockerServiceServer()
 }
 
@@ -124,6 +139,9 @@ func (UnimplementedLockerServiceServer) Status(context.Context, *StatusRequest) 
 }
 func (UnimplementedLockerServiceServer) Authorize(context.Context, *AuthorizeRequest) (*AuthorizeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Authorize not implemented")
+}
+func (UnimplementedLockerServiceServer) Email(context.Context, *EmailRequest) (*EmailResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Email not implemented")
 }
 func (UnimplementedLockerServiceServer) mustEmbedUnimplementedLockerServiceServer() {}
 func (UnimplementedLockerServiceServer) testEmbeddedByValue()                       {}
@@ -218,6 +236,24 @@ func _LockerService_Authorize_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LockerService_Email_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EmailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LockerServiceServer).Email(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LockerService_Email_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LockerServiceServer).Email(ctx, req.(*EmailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LockerService_ServiceDesc is the grpc.ServiceDesc for LockerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -240,6 +276,10 @@ var LockerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Authorize",
 			Handler:    _LockerService_Authorize_Handler,
+		},
+		{
+			MethodName: "Email",
+			Handler:    _LockerService_Email_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

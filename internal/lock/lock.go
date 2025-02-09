@@ -1,28 +1,53 @@
 package lock
 
 import (
-	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 	"os"
-	"os/exec"
-	"os/user"
-	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
+type LockStatus int
+
+const (
+	StatusUnknown LockStatus = iota
+	StatusLocked
+	StatusUnlocked
+)
+
+// LockFile represents a lockfile on disk
+type LockFile struct {
+	User          string        `json:"user" yaml:"user"`
+	UID           int           `json:"uid" yaml:"uid"`
+	Reason        string        `json:"reason,omitempty" yaml:"reason,omitempty"`
+	Email         string        `json:"email,omitempty" yaml:"email,omitempty"`
+	Session       string        `json:"session,omitempty" yaml:"session,omitempty"`
+	TTY           string        `json:"tty,omitempty" yaml:"tty,omitempty"`
+	UnlockTime    time.Time     `json:"unlock_time,omitempty" yaml:"unlock_time,omitempty"`
+	UnlockOnExit  bool          `json:"unlock_on_exit" yaml:"unlock_on_exit"`
+	UnlockOnIdle  time.Duration `json:"unlock_on_idle,omitempty" yaml:"unlock_on_idle,omitempty"`
+	AllowedUsers  []string      `json:"allowed_users,omitempty" yaml:"allowed_users,omitempty"`
+	AllowedGroups []string      `json:"allowed_groups,omitempty" yaml:"allowed_groups,omitempty"`
+	logger        *zap.Logger
+}
+
 // ReadLockfile reads a lockfile from disk and parses it into a LockFile struct
-func ReadLockfile(path string, logger *logrus.Logger) (*LockFile, error) {
+func ReadLockfile(path string, logger *zap.Logger) (*LockFile, error) {
 	// Lockfiles are written in json format so just unmarshal it
 	lockfile := &LockFile{
 		logger: logger,
 	}
-	err := readJSONFile(path, lockfile)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open lockfile: %w", err)
+	}
+	defer f.Close()
+
+	// Unmarshal the file
+	err = json.NewDecoder(f).Decode(lockfile)
 	if err != nil {
 		return nil, err
 	}
@@ -30,149 +55,36 @@ func ReadLockfile(path string, logger *logrus.Logger) (*LockFile, error) {
 	return lockfile, nil
 }
 
-func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowedUsers, allowedGroups []string, logger *logrus.Logger) (lockfile *LockFile, err error) {
-
-	// Use loginctl to get session information.
-	sessionID, tty, userName, uid, err := getSessionStatus()
-	logger.WithFields(logrus.Fields{
-		"session_id": sessionID,
-		"tty":        tty,
-		"user":       userName,
-		"uid":        uid,
-	}).Debug("session information")
+// WriteLockfile writes a lockfile to disk
+func (lf LockFile) WriteLockfile(path string) error {
+	// Open the file for writing
+	f, err := os.Create(path)
 	if err != nil {
-		// If loginctl fails, fall back to os/user.
-		cu, err2 := user.Current()
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to get current user: %w (and loginctl error: %v)", err2, err)
-		}
-		userName = cu.Username
-		uid, _ = strconv.Atoi(cu.Uid)
-		tty = os.Getenv("SSH_TTY")
-		sessionID = ""
+		return fmt.Errorf("failed to create lockfile: %w", err)
 	}
 
-	email, err := getUserEmail(userName)
+	// Marshal the lockfile to json
+	data, err := json.MarshalIndent(lf, "", "  ")
 	if err != nil {
-		email = ""
-		logger.Warnf("failed to get email for user %s: %v", userName, err)
-	} else {
-		logger.WithFields(logrus.Fields{
-			"email": email,
-			"user":  userName,
-		}).Debug("email found")
+		return fmt.Errorf("failed to marshal lockfile: %w", err)
 	}
 
-	return &LockFile{
-		User:          userName,
-		UID:           uid,
-		Email:         email,
-		Reason:        reason,
-		Session:       sessionID,
-		TTY:           tty,
-		UnlockTime:    unlockTime,
-		UnlockOnExit:  unlockOnExit,
-		AllowedUsers:  allowedUsers,
-		AllowedGroups: allowedGroups,
-		logger:        logger,
-	}, nil
+	// Write the data to the file
+	_, err = f.Write(data)
+	return err
 }
 
-type LockFile struct {
-	User          string    `json:"user" yaml:"user"`
-	UID           int       `json:"uid" yaml:"uid"`
-	Reason        string    `json:"reason,omitempty" yaml:"reason,omitempty"`
-	Email         string    `json:"email,omitempty" yaml:"email,omitempty"`
-	Session       string    `json:"session,omitempty" yaml:"session,omitempty"`
-	TTY           string    `json:"tty,omitempty" yaml:"tty,omitempty"`
-	UnlockTime    time.Time `json:"unlock_time,omitempty" yaml:"unlock_time,omitempty"`
-	UnlockOnExit  bool      `json:"unlock_on_exit" yaml:"unlock_on_exit"`
-	AllowedUsers  []string  `json:"allowed_users,omitempty" yaml:"allowed_users,omitempty"`
-	AllowedGroups []string  `json:"allowed_groups,omitempty" yaml:"allowed_groups,omitempty"`
-	logger        *logrus.Logger
-}
-
-func (lf LockFile) Remove(lockfilePath string) error {
+// RemoveLockfile removes a lockfile from disk
+func (lf LockFile) RemoveLockfile(lockfilePath string) error {
 	if _, err := os.Stat(lockfilePath); err != nil {
-		lf.logger.WithFields(logrus.Fields{"error": err, "lockfile": lockfilePath}).Warn("failed to remove lockfile. lockfile doesn't exist")
+		lf.logger.Warn("failed to remove lockfile. lockfile doesn't exist",
+			zap.Error(err),
+			zap.String("lockfile", lockfilePath))
 		return fmt.Errorf("failed to stat lockfile: %w", err)
 	}
-	// Remove the file.
-	lf.logger.WithFields(logrus.Fields{"lockfile": lockfilePath}).Debug("removing lockfile")
+	// RemoveLockfile the file.
+	lf.logger.Debug("removing lockfile", zap.String("lockfile", lockfilePath))
 	return os.Remove(lockfilePath)
-}
-
-func (lf LockFile) IsSessionFinished() bool {
-	// If no session is recorded, assume the session is over. This shouldn't happen
-	if lf.Session == "" {
-		lf.logger.WithFields(logrus.Fields{
-			"session":   lf.Session,
-			"fail_open": true,
-		}).Debug("no session found in lockfile. unlocking...")
-		return true //TODO: align this with the config.FailOpen setting
-	}
-
-	cmd := exec.Command("/usr/bin/loginctl", "list-sessions")
-	output, err := cmd.Output()
-	if err != nil {
-		// If there's an error, we assume the session is over.
-		lf.logger.WithFields(logrus.Fields{
-			"error":     err,
-			"session":   lf.Session,
-			"fail_open": true,
-		}).Debug("failed to list sessions. unlocking...")
-		return true //TODO: align this with the config.FailOpen setting
-	}
-
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		line := scanner.Text()
-		// Skip the header line.
-		if strings.HasPrefix(line, "SESSION") {
-			continue
-		}
-
-		// Split the line into fields.
-		// Example line:
-		// "240 1001 ben - pts/4 active no -"
-		fields := strings.Fields(line)
-		if len(fields) < 6 {
-			continue
-		}
-
-		sessionID := fields[0]
-		state := fields[5] // Expecting the state to be in the sixth column.
-
-		// If we find a matching session...
-		if sessionID == lf.Session {
-			lf.logger.WithFields(logrus.Fields{
-				"session":    lf.Session,
-				"session_id": sessionID,
-				"state":      state,
-			}).Debug("found session in loginctl output")
-			// If the session is active, it's not over.
-			if state == "active" {
-				lf.logger.Debug("session is active. not unlocking.")
-				return false
-			}
-			// Otherwise, it is over.
-			lf.logger.Debug("session is not active. unlocking.")
-			return true
-		}
-	}
-
-	// If no matching session is found, assume it is over.
-	lf.logger.Debug("session not found in loginctl output. unlocking.")
-	return true
-}
-
-func (lf LockFile) IsExpired() bool {
-	expired := !lf.UnlockTime.IsZero() && time.Now().After(lf.UnlockTime)
-	lf.logger.WithFields(logrus.Fields{
-		"unlock_time": lf.UnlockTime,
-		"expired":     expired,
-	}).Debug("checking if lockfile is expired")
-	return expired
 }
 
 // String implements the fmt.Stringer interface to provide a pretty-printed output.
@@ -211,6 +123,7 @@ func (lf LockFile) String() string {
   TTY:           %s
   UnlockTime:    %s
   UnlockOnExit:  %t
+  UnlockOnIdle:  %s
   AllowedUsers:  %s
   AllowedGroups: %s`,
 		lf.User,
@@ -221,172 +134,8 @@ func (lf LockFile) String() string {
 		lf.TTY,
 		unlockTimeStr,
 		lf.UnlockOnExit,
+		lf.UnlockOnIdle,
 		allowedUsers,
 		allowedGroups,
 	)
-}
-
-// WriteLockfile writes a lockfile to disk
-func (lf LockFile) WriteLockfile(path string) error {
-	// Open the file for writing
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to create lockfile: %w", err)
-	}
-
-	// Marshal the lockfile to json
-	data, err := json.MarshalIndent(lf, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal lockfile: %w", err)
-	}
-
-	// Write the data to the file
-	_, err = f.Write(data)
-	return err
-}
-
-// FindAllLockfiles searches through all users' home directories (as determined by /etc/passwd)
-// for a file named ".system.lockfile". It returns a slice of LockFile pointers for any found.
-func FindAllLockfiles(logger *logrus.Logger) ([]*LockFile, error) {
-	passwdPath := "/etc/passwd"
-	file, err := os.Open(passwdPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open %s: %w", passwdPath, err)
-	}
-	defer file.Close()
-
-	var lockfiles []*LockFile
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		// Each line in /etc/passwd is colon-delimited.
-		// Format: username:password:UID:GID:GECOS:home_directory:shell
-		line := scanner.Text()
-		fields := strings.Split(line, ":")
-		if len(fields) < 6 {
-			continue // skip malformed lines
-		}
-		homeDir := fields[5]
-		// Construct the path to the lockfile.
-		lockfilePath := filepath.Join(homeDir, ".system.lockfile")
-		// Check if the file exists.
-		if _, err := os.Stat(lockfilePath); err == nil {
-			lf, err := ReadLockfile(lockfilePath, logger)
-			if err != nil {
-				// Log the error and continue. You might also want to collect these errors.
-				fmt.Fprintf(os.Stderr, "warning: failed to read lockfile %s: %v\n", lockfilePath, err)
-				continue
-			}
-			lockfiles = append(lockfiles, lf)
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading %s: %w", passwdPath, err)
-	}
-
-	return lockfiles, nil
-}
-
-// readJSONFile reads a json file from disk and unmarshals it into the provided interface
-func readJSONFile(path string, lockfile *LockFile) (err error) {
-	// Read the file and unmarshal it into the lockfile struct
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("failed to open lockfile: %w", err)
-	}
-	defer f.Close()
-
-	// Unmarshal the file
-	return json.NewDecoder(f).Decode(lockfile)
-}
-
-// getUserEmail attempts to obtain the user's email by invoking dbus-send.
-// It executes the command and parses its output for a valid email address.
-func getUserEmail(userName string) (string, error) {
-	cmd := exec.Command("sudo", "dbus-send",
-		"--print-reply",
-		"--system",
-		"--dest=org.freedesktop.sssd.infopipe",
-		"/org/freedesktop/sssd/infopipe",
-		"org.freedesktop.sssd.infopipe.GetUserAttr",
-		"string:"+userName,
-		"array:string:mail",
-	)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to run dbus-send command: %w; output: %s", err, output)
-	}
-
-	// Regex to find lines like: string "someone@example.com"
-	re := regexp.MustCompile(`string "([^"]+)"`)
-	matches := re.FindAllStringSubmatch(string(output), -1)
-	if len(matches) == 0 {
-		return "", fmt.Errorf("no email found in dbus-send output")
-	}
-
-	// Return the first match that isn’t the literal "mail".
-	for _, m := range matches {
-		if len(m) > 1 && strings.ToLower(m[1]) != "mail" {
-			return m[1], nil
-		}
-	}
-
-	return "", fmt.Errorf("no valid email found in dbus-send output")
-}
-
-// getSessionStatus invokes "loginctl session-status --no-pager" and parses its output.
-// It returns the session ID, TTY, username, and UID.
-func getSessionStatus() (sessionID, tty, userName string, uid int, err error) {
-	cmd := exec.Command("/usr/bin/loginctl", "session-status", "--no-pager")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", "", "", 0, fmt.Errorf("failed to execute loginctl: %w", err)
-	}
-
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	firstLineFound := false
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		// The first non-empty line should look like: "240 - ben (1001)"
-		if !firstLineFound {
-			firstLineFound = true
-			// Split on the hyphen.
-			parts := strings.SplitN(line, "-", 2)
-			if len(parts) < 2 {
-				return "", "", "", 0, errors.New("unexpected format in session-status output (first line)")
-			}
-			sessionID = strings.TrimSpace(parts[0])
-			// The remainder should contain the username and UID.
-			rest := strings.TrimSpace(parts[1]) // e.g., "ben (1001)"
-			// Use a regular expression to extract the username and UID.
-			re := regexp.MustCompile(`^(.+)\s+\((\d+)\)$`)
-			matches := re.FindStringSubmatch(rest)
-			if len(matches) != 3 {
-				return "", "", "", 0, errors.New("could not parse username and UID from session-status output")
-			}
-			userName = strings.TrimSpace(matches[1])
-			uid, err = strconv.Atoi(matches[2])
-			if err != nil {
-				return "", "", "", 0, fmt.Errorf("invalid UID in session-status output: %w", err)
-			}
-			continue
-		}
-
-		// Look for the TTY line.
-		if strings.HasPrefix(line, "TTY:") {
-			// Line example: "TTY: pts/4"
-			tty = strings.TrimSpace(strings.TrimPrefix(line, "TTY:"))
-			break
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return "", "", "", 0, fmt.Errorf("error reading loginctl output: %w", err)
-	}
-	if sessionID == "" || tty == "" || userName == "" {
-		return "", "", "", 0, errors.New("incomplete session-status information")
-	}
-	return sessionID, tty, userName, uid, nil
 }
