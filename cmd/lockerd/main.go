@@ -74,10 +74,3 @@ func main() {
 	).Run()
 
 }
-
-/*
-
- - allow lock file replacement
-   - notify current use via session of the replacement of their lock file unless it's the same session?
-
-*/

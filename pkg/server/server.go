@@ -85,29 +85,35 @@ func (s *LockerServiceServerImpl) Status(ctx context.Context, req *locker.Status
 	}
 
 	s.log.Info("Status RPC called", zap.Any("lockStatus", lockStatus), zap.Any("lockfile", lockfile))
-	return &locker.StatusResponse{
-		State:           locker.StatusResponse_LockState(lockStatus),
-		User:            lockfile.User,
-		Uid:             int32(lockfile.UID),
-		Tty:             lockfile.TTY,
-		SessionId:       lockfile.Session,
-		AllowedUsers:    lockfile.AllowedUsers,
-		AllowedGroups:   lockfile.AllowedGroups,
-		Reason:          lockfile.Reason,
-		UnlockOnExit:    lockfile.UnlockOnExit,
-		UnlockTime:      nil, //TODO: convert unlock time to a duration based on the time from now till unlock
-		UnlockAfterIdle: nil, // TODO: Populate with the UnlockAFterIdle value
-	}, nil
+	if lockStatus == lock.StatusUnlocked {
+		return &locker.StatusResponse{
+			State: locker.StatusResponse_LockState(lockStatus),
+		}, nil
+	} else if lockStatus == lock.StatusLocked {
+		return &locker.StatusResponse{
+			State:           locker.StatusResponse_LockState(lockStatus),
+			User:            lockfile.User,
+			Uid:             int32(lockfile.UID),
+			Tty:             lockfile.TTY,
+			SessionId:       lockfile.Session,
+			AllowedUsers:    lockfile.AllowedUsers,
+			AllowedGroups:   lockfile.AllowedGroups,
+			Reason:          lockfile.Reason,
+			UnlockOnExit:    lockfile.UnlockOnExit,
+			UnlockTime:      nil, //TODO: convert unlock time to a duration based on the time from now till unlock
+			UnlockAfterIdle: nil, // TODO: Populate with the UnlockAFterIdle value
+		}, nil
+	} else {
+		return &locker.StatusResponse{State: locker.StatusResponse_UNKNOWN}, nil
+	}
 }
 
 // Implement Authorize. Check if a given username is authorized.
 func (s *LockerServiceServerImpl) Authorize(ctx context.Context, req *locker.AuthorizeRequest) (*locker.AuthorizeResponse, error) {
 	s.log.Info("Authorize RPC called", zap.String("username", req.Username))
 
-	// TODO: Convert from grpc type to internal type
-	// TODO: Send to controller
-
-	// Insert your authorization logic here. For demo, we'll always authorize.
+	// TODO: This shouldn't be needed as the PAM module is the only thing that checks authorization and it does so
+	//       by accessing the lockfile directly in order to improve responsiveness. This is just a placeholder for now.
 	authorized := true
 	reason := ""
 	if !authorized {
