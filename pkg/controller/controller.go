@@ -294,7 +294,7 @@ func (lc *StandardLockController) watchLockfile() {
 			// For example, if the file is written to:
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				lc.log.Info("lockfile was modified", zap.String("lockfile", lockfile))
-				lf, err := lock.ReadLockfile(lockfile, lc.log)
+				lf, err := lock.ReadLockfile(lockfile)
 				if err != nil {
 					lc.log.Error("failed to read lockfile", zap.String("lockfile", lockfile), zap.Error(err))
 				} else {

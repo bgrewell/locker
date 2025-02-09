@@ -104,7 +104,7 @@ func CheckAccess(username string) (approved bool, reason string) {
 	var err error
 	cfg, _ := config.ReadConfiguration()
 	if cfg != nil {
-		lf, err = lock.ReadLockfile(cfg.LockFileLocation, nil)
+		lf, err = lock.ReadLockfile(cfg.LockFileLocation)
 		if err == os.ErrNotExist {
 			// If there is no lockfile then we can allow access
 			return true, ""
