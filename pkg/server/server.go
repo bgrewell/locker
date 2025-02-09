@@ -35,6 +35,11 @@ func NewLockerServiceServer(cfg *config.Configuration, log *zap.Logger) locker.L
 func (s *LockerServiceServerImpl) Lock(ctx context.Context, req *locker.LockRequest) (*locker.LockResponse, error) {
 	s.log.Info("Lock RPC called", zap.Any("request", req))
 
+	unlockTime := time.Time{}
+	if req.UnlockTime != nil && req.UnlockTime.AsDuration() > 0 {
+		unlockTime = time.Now().Add(req.UnlockTime.AsDuration())
+	}
+
 	lf := &lock.LockFile{
 		User:          req.User,
 		UID:           int(req.Uid),
@@ -42,7 +47,7 @@ func (s *LockerServiceServerImpl) Lock(ctx context.Context, req *locker.LockRequ
 		Email:         req.Email,
 		Session:       req.SessionId,
 		TTY:           req.Tty,
-		UnlockTime:    time.Now().Add(req.UnlockTime.AsDuration()),
+		UnlockTime:    unlockTime,
 		UnlockOnExit:  req.UnlockOnExit,
 		UnlockOnIdle:  req.UnlockAfterIdle.AsDuration(),
 		AllowedUsers:  req.AllowedUsers,
