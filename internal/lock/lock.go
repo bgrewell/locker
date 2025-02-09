@@ -73,7 +73,7 @@ func (lf LockFile) WriteLockfile(path string) error {
 // RemoveLockfile removes a lockfile from disk
 func (lf LockFile) RemoveLockfile(lockfilePath string) error {
 	if _, err := os.Stat(lockfilePath); err != nil {
-		return fmt.Errorf("failed to stat lockfile: %w", err)
+		return err
 	}
 	return os.Remove(lockfilePath)
 }

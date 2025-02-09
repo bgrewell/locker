@@ -5,7 +5,7 @@
 You can quickly install locker to your system by running the following command:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/bgrewell/locker/main/scripts/install.sh | sudo bash
+curl -sL https://bgrewell.github.io/locker/install.sh | sudo bash
 ```
 
 ## Components
