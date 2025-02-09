@@ -24,10 +24,7 @@ type LockerServiceServerImpl struct {
 // wiring in the controller.
 func NewLockerServiceServer(cfg *config.Configuration, log *zap.Logger) locker.LockerServiceServer {
 	ctrl := controller.NewLockController(cfg, log)
-	err := ctrl.Start()
-	if err != nil {
-		log.Fatal("failed to start controller", zap.Error(err))
-	}
+	// TODO: Check if the lockfile exists when we start (i.e. after a reboot) and restore the lock
 	return &LockerServiceServerImpl{
 		ctrl: ctrl,
 		log:  log,

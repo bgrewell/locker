@@ -222,6 +222,11 @@ func (lc *StandardLockController) ExitDetected() bool {
 // process is a goroutine that checks the lockfile for unlock conditions and unlocks the system if any are met.
 func (lc *StandardLockController) process() {
 
+	if lc.lockfile == nil {
+		lc.Stop()
+		return
+	}
+
 	// Exit early if all the conditional unlock options are disabled
 	if lc.lockfile.UnlockOnExit == false &&
 		lc.lockfile.UnlockTime.IsZero() &&
