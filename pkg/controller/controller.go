@@ -8,7 +8,6 @@ import (
 	"go.uber.org/zap"
 	"locker/internal/config"
 	"locker/internal/lock"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -77,10 +76,16 @@ func (lc *StandardLockController) Lock(lf *lock.LockFile) error {
 
 // Unlock removes the lockfile from disk and stops the lock controller.
 func (lc *StandardLockController) Unlock() error {
+
+	if lc.lockfile == nil {
+		return errors.New("system is not locked")
+	}
+
 	err := lc.lockfile.RemoveLockfile(lc.configuration.LockFileLocation)
-	if err != nil && err != os.ErrNotExist {
+	if err != nil {
 		return err
 	}
+	lc.lockfile = nil
 	return lc.Stop()
 }
 

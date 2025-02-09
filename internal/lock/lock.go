@@ -2,6 +2,7 @@ package lock
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -73,6 +74,9 @@ func (lf LockFile) WriteLockfile(path string) error {
 // RemoveLockfile removes a lockfile from disk
 func (lf LockFile) RemoveLockfile(lockfilePath string) error {
 	if _, err := os.Stat(lockfilePath); err != nil {
+		if os.IsNotExist(err) {
+			return errors.New("system is not locked")
+		}
 		return err
 	}
 	return os.Remove(lockfilePath)
