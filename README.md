@@ -42,7 +42,7 @@ message upon login warning them that the system is currently locked.
 
 When a user issues the 'lock' command the system first checks to ensure it is not already locked by another user. If it
 is then the lock command will fail. If it is not then the lock command will create a lock file at 
-`/usr/local/lib/locker/lockfile` that contains the username of the user who locked the system, the time the system 
+`/var/lock/locker.lock` that contains the username of the user who locked the system, the time the system 
 was locked, the email address (if accessible) of the user who locked the system, a flag for if the system will auto
 unlock when the users sessions have terminated, and optional fields including an unlock date/time, a lock reason, and
 a list of any additional users or groups who are allowed to log in while the system is locked.
