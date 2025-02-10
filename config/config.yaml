@@ -3,3 +3,5 @@ lock_file_location: "/var/lib/locker.lock"
 log_level: "info"
 fail_open: true
 grpc_address: "localhost:5128"
+bypass_users: ['root']
+bypass_groups: ['admin']

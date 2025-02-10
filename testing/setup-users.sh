@@ -7,6 +7,10 @@ apt-get update -y
 # Ensure curl is installed for fetching GitHub keys
 apt-get install -y curl
 
+# Ensure that ssh passwords aren't disabled
+rm /etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+systemctl restart ssh
+
 # Create users and set passwords.
 # '-m' creates a home directory, '-s /bin/bash' sets the default shell to bash.
 for user in bob jim tom ben; do
@@ -19,6 +23,7 @@ done
 # Add 'tom' and 'ben' to the sudo group.
 usermod -aG sudo tom
 usermod -aG sudo ben
+usermod -aG admin ben
 
 # Create SSH directory for ben and fetch keys from GitHub.
 BEN_HOME="/home/ben"

@@ -77,28 +77,6 @@ func generateDenyReason(data LockNoticeData) (string, error) {
 // is locked then it will check the access rules and return a result based on the rules.
 func CheckAccess(username string) (approved bool, reason string) {
 
-	//	denyReason := `
-	//┌────────────────────────────────────────────────────────────────────┐
-	//│                        SYSTEM LOCK NOTICE                          │
-	//├────────────────────────────────────────────────────────────────────┤
-	//│ This system is currently locked by 'ben'.                          │
-	//│                                                                    │
-	//│ Access is restricted to the following:                             │
-	//│                                                                    │
-	//│    Users:                                                          │
-	//│       - root                                                       │
-	//│       - admin                                                      │
-	//│       - ben                                                        │
-	//│                                                                    │
-	//│    Groups:                                                         │
-	//│       - wheel                                                      │
-	//│                                                                    │
-	//│ The system is scheduled to automatically unlock at:                │
-	//│    2021-12-31 23:59:59                                             │
-	//│                                                                    │
-	//│ Please contact your administrator for further details.             │
-	//└────────────────────────────────────────────────────────────────────┘`
-
 	// Pull the lockfile data
 	var lf *lock.LockFile
 	var err error
@@ -117,6 +95,21 @@ func CheckAccess(username string) (approved bool, reason string) {
 	// Otherwise if the lockfile exists we need to see if the user is allowed to access the system
 	if lf.User == username {
 		return true, ""
+	}
+
+	// Check if user is any of the bypass entries
+	for _, user := range cfg.BypassUsers {
+		if user == username {
+			return true, ""
+		}
+	}
+
+	// Check if user is in any of the bypass groups
+	for _, group := range cfg.BypassGroups {
+		present, _ := UserInGroup(username, group)
+		if present {
+			return true, ""
+		}
 	}
 
 	// Check if the username is in the allowed users list
