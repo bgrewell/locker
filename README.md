@@ -1,67 +1,241 @@
 # Locker
 
-## Install
+Locker is an adaptable solution that lets you allocate and revoke system access on the fly, ensuring that specific users or groups can perform exclusive tasks—such as system maintenance, temporary collaboration, or uninterrupted processing—without interference from other accounts. By combining a PAM module, a lightweight background daemon, and a user-friendly CLI, Locker simplifies the process of dynamically granting or denying logins based on real-time requirements. 
 
-You can quickly install locker to your system by running the following command:
+Please note that Locker is not intended to replace or enhance any native security infrastructure. It is designed purely as a convenience layer atop existing authentication and authorization systems, making it easier to manage who can log in at any given time for short-term or specialized needs.
+
+
+---
+
+## Table of Contents
+
+1. [Features](#features)  
+2. [Installation](#installation)  
+3. [Usage](#usage)  
+   - [Locker CLI](#locker-cli)  
+   - [Lock/Unlock Examples](#lockunlock-examples)  
+4. [Components](#components)  
+   - [Locker PAM Module](#locker-pam-module)  
+   - [Locker Service](#locker-service)  
+   - [Locker CLI (detailed)](#locker-cli-detailed)  
+5. [How It Works](#how-it-works)  
+6. [Development](#development)  
+   - [Building From Source](#building-from-source)  
+   - [Compile API](#compile-api)  
+   - [Testing](#testing)  
+7. [License](#license)
+
+---
+
+## Features
+
+- **System-Level Locking**: Prevents unauthorized logins when the system is locked, allowing only the locking user, admin/sudo accounts, or those explicitly included on the access list. 
+- **Flexible Unlock Options**:  
+  - Auto-unlock when the locking user's session ends.  
+  - Unlock at a specific time (time-unlock).  
+  - Unlock after a specified period of system idle time (idle-time-unlock).  
+- **Granular Access Control**: Configure lists of allowed users/groups who can bypass the lock.  
+- **Warning and Messaging**: Display an MOTD or warning message to users who are allowed to log in under lock conditions.  
+- **Easy CLI Commands**: `lock`, `unlock`, and `locker status` for quick control and status checks.
+
+---
+
+## Installation
+
+### Quick Install Script
+
+You can install **Locker** on most Debian/Ubuntu-based systems using the following command:
+
+    curl -sL https://bgrewell.github.io/locker/install.sh | sudo bash
+
+This script will:
+
+1. Download the latest release artifacts from GitHub.  
+2. Install binaries to `/opt/locker/bin`.  
+3. Configure the PAM module.  
+4. Set up and enable the `lockerd.service` systemd service.  
+5. Create handy symlinks: `locker`, `lock`, and `unlock`.
+
+**Note**: The install script may require you to have certain prerequisites (e.g., `curl`). If you run into issues, please make sure your system is up-to-date and has `curl` installed.
+
+### From Source
+
+If you prefer to install from source, jump to the [Development](#development) section for build instructions.
+
+---
+
+## Usage
+
+Once installed, you can control the system lock using the following commands:
+
+    locker lock
+    locker unlock
+    locker status
+
+Or use the shortcut scripts:
+
+    lock
+    unlock
+
+### Locker CLI
+
+The `locker` CLI includes subcommands and options:
 
 ```bash
-curl -sL https://bgrewell.github.io/locker/install.sh | sudo bash
+Usage:
+  locker [OPTIONS] <action> 
+
+Actions:
+  lock      Lock the system exclusively for the current user.
+  unlock    Unlock the system.
+  status    Check whether the system is locked or unlocked.
+
+Options:
+  -a, --auto-unlock             Automatically unlock when your session ends (default: true)
+  -t, --time-unlock <duration>  Automatically unlock after <duration> (e.g., "15m", "2h")
+  -i, --idle-time-unlock <dur>  Automatically unlock after <duration> of inactivity
+  -u, --users-allowed <list>    Comma-separated list of users allowed during lock
+  -g, --groups-allowed <list>   Comma-separated list of groups allowed during lock
+  -r, --reason <text>           Reason for locking the system
+  -m, --email <address>         Email address displayed to users (optional)
+      --enable                  Enable system locking (TBD future use)
+      --disable                 Disable system locking (TBD future use)
+  -d, --debug                   Enable debug output
+  -h, --help                    Show this help message
 ```
+
+### Lock/Unlock Examples
+
+- **Lock the system** with auto-unlock on session exit:
+
+      locker lock
+
+- **Lock the system** until a specified time has passed:
+
+      locker lock --time-unlock 1h --reason "Running critical experiments"
+
+- **Unlock the system** explicitly:
+
+      locker unlock
+
+- **Check the system’s current status**:
+
+      locker status
+
+> **TIP**: You can also use the shortcut commands `lock` and `unlock` (both invoke `locker lock`/`locker unlock`).
+
+---
 
 ## Components
 
 ### Locker PAM Module
 
-The PAM module is a shared object that is loaded by the PAM system when a user tries to log in. The PAM module is
-designed to check the lock status of the system and deny the user access if the system is locked unless the user is in 
-the list of allowed users or groups.
+The Locker PAM module is a shared object (`pam_locker.so`) loaded by the PAM system on user login attempts. It checks whether the system is locked, and if so, decides whether to allow or deny access based on:
 
-The primary purpose of the PAM module is to control access to the system based on the lock status of the system and to
-present useful messages to uses when it is.
+- **Lock status**  
+- **User groups**  
+- **Allowed users**  
+- **Admin/sudo privileges**  
+
+Denied users see a custom message explaining why the system is locked.
 
 ### Locker Service
 
-- auto-unlock: Monitors sessions and unlocks when the locking session ends
-- time-unlock: Unlocks the system at a specified time
-- idle-unlock: Unlocks the system after a specified period of inactivity
-- manual-control: Locks/Unlocks the system when a user issues the unlock command
+A background service (`lockerd`) runs in the background and handles:
 
-### Locker Command Line Interface
+- **auto-unlock**: Monitors sessions and unlocks once the locking session ends.  
+- **time-unlock**: Automatically unlocks the system at a specified time.  
+- **idle-unlock**: Unlocks the system after a configured period of inactivity.  
+- **manual-control**: Coordinates lock/unlock requests from the CLI.
 
-## How it works
+### Locker CLI (detailed)
 
-Locker allows users to request locking the system so that other users can not log in during the lock period. This tool
-was designed for systems being used for research and development purposes, where users may need to lock the system to
-prevent others from modifying or using the system during periods where they are running experiments or measurements
-that could be interrupted by other users.
+The `locker` (or `lock` and `unlock`) commands allow users to:
 
-Locker provides commands 'lock' and 'unlock' that the user can use to request a lock on the system. When the system is
-locked by a user other users will receive a message if they try to log into the system and then their login request will
-be denied. Users with root access (or sudo permissions) will still be able to log into the system but will receive a
-message upon login warning them that the system is currently locked.
+- **Lock**: Create a lock file at `/var/lock/locker.lock` containing metadata like the locking user, lock time, optional email, allowed users/groups, and more.
+- **Unlock**: Remove or expire the lock file.
+- **Status**: Check if a lock file exists and retrieve its details.
 
-When a user issues the 'lock' command the system first checks to ensure it is not already locked by another user. If it
-is then the lock command will fail. If it is not then the lock command will create a lock file at 
-`/usr/local/lib/locker/lockfile` that contains the username of the user who locked the system, the time the system 
-was locked, the email address (if accessible) of the user who locked the system, a flag for if the system will auto
-unlock when the users sessions have terminated, and optional fields including an unlock date/time, a lock reason, and
-a list of any additional users or groups who are allowed to log in while the system is locked.
+When another user attempts to log in under a locked system, the PAM module checks whether they’re allowed. If they are not in the allowed list or an admin, login is denied.
 
-When a user tries to log in when the system is locked locker will first check to see if the auto unlock feature is set
-and if it is it will check to see if the users session is no longer active and unlock if it isn't active. If it is still
-active then it will check to see if the user is in the list of users who are allowed to log in while the system is 
-locked or if the user is an admin user (root or sudo user). If the user is not in the list of users who are allowed to
-log in while the system is locked and the user is not an admin user then the user will receive a message that the system
-is locked and their login request will be denied.
+---
 
-If the user is allowed to log in and the system is locked they will see a MOTD which contains a warning that the system
-is locked and the reason.
+## How It Works
 
-## Building
+**Locker** is designed for scenarios where you need to ensure uninterrupted system access for a single user or a specific set of users.
+
+1. **Locking**  
+   - When a user runs `locker lock`, Locker checks if another user has already locked the system. If locked, it denies the request. Otherwise, a lock file is created at `/var/lock/locker.lock` with details:
+     - Locking username  
+     - Lock time and optional unlock time  
+     - Allowed users/groups  
+     - Reason for lock (if any)  
+     - Auto unlock flags (time-based, session-based, idle-based)
+2. **PAM Interception**  
+   - Upon a login attempt, the **PAM module** checks the lock file. If the system is locked and the user is neither on the allowed list nor an admin, access is denied and a message is displayed.
+3. **Unlocking**  
+   - The user can run `locker unlock` to release the lock.  
+   - The **Locker Service** may also automatically unlock the system based on time or session rules.
+4. **Admin Override**  
+   - Root/sudo users always have access but will see a warning on login when the system is locked.
+
+---
+
+## Development
+
+If you’d like to modify Locker, compile from source, or contribute, please follow these steps:
+
+### Building From Source
+
+1. Clone this repository:
+
+       git clone https://github.com/bgrewell/locker.git
+       cd locker
+
+2. Install or verify system dependencies:
+
+       sudo apt update && sudo apt install -y libpam0g-dev
+
+3. Build Locker:
+
+       make
+
+This will compile:
+- `bin/locker` (CLI)  
+- `bin/lockerd` (Service)  
+- `bin/pam_locker.so` (PAM module)
 
 ### Compile API
 
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-```
+If you make changes to the protobuf definitions or need to regenerate the gRPC stubs, install the protoc plug-ins:
+
+    go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+    go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+Then compile the proto definitions:
+
+    make proto
+
+### Testing
+
+Locker’s code can be tested with:
+
+    go test ./...
+
+For integration testing, you may want to run Locker on a test VM or container to ensure the PAM module and systemd service function correctly.
+
+---
+
+## License
+
+Locker is free software, distributed under the terms of the **GNU General Public License v3 (GPLv3)**.  
+Please see the [LICENSE](LICENSE) file for details.
+
+---
+
+**Contributions and Feedback**  
+We welcome issues, bug reports, and pull requests! Please open an issue on GitHub with any questions or suggestions.
+
+**Maintainer**: [@bgrewell](https://github.com/bgrewell)
+
+<sub>© 2025 Ben Grewell. All rights reserved.</sub>

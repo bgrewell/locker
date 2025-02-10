@@ -1,5 +1,5 @@
 ---
-lock_file_location: "/var/lib/lock"
+lock_file_location: "/var/lib/locker.lock"
 log_level: "info"
 fail_open: true
-grpc_address: ":50051"
+grpc_address: "localhost:5128"
