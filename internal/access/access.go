@@ -1,13 +1,12 @@
 package access
 
 import (
-	"bytes"
 	"fmt"
 	"locker/internal/config"
 	"locker/internal/lock"
 	"os"
 	"os/user"
-	"text/template"
+	"strings"
 	"time"
 )
 
@@ -24,52 +23,53 @@ type LockNoticeData struct {
 	Reason string
 }
 
+func padLine(s string) string {
+	const width = 68 // inner width (adjust to match your border)
+	// Trim any trailing newline and pad with spaces
+	s = strings.TrimRight(s, "\n")
+	if len(s) > width {
+		s = s[:width]
+	}
+	return "│" + s + strings.Repeat(" ", width-len(s)) + "│"
+}
+
 // generateDenyReason produces a lock notice message using template variables.
 func generateDenyReason(data LockNoticeData) (string, error) {
-	const tmpl = `
+
+	const header = `	
 ┌────────────────────────────────────────────────────────────────────┐
 │                        SYSTEM LOCK NOTICE                          │
-├────────────────────────────────────────────────────────────────────┤
-│ This system is currently locked by '{{.LockedBy}}'.                
-{{- if .Reason }}
-│ Reason: {{.Reason}}
-{{- end }}
-{{- if or (gt (len .AllowedUsers) 0) (gt (len .AllowedGroups) 0) }}
-│                                                                    │
-│ Access is restricted to the following:
-{{- if gt (len .AllowedUsers) 0 }}
-│    Users:
-{{- range .AllowedUsers }}
-│       - {{.}}
-{{- end }}
-{{- end }}
-{{- if gt (len .AllowedGroups) 0 }}
-│                                                                    │
-│    Groups:
-{{- range .AllowedGroups }}
-│       - {{.}}
-{{- end }}
-{{- end }}
-{{- end }}
-{{- if .UnlockTime }}
-│                                                                    │
-│ The system is scheduled to automatically unlock at:                
-│    {{.UnlockTime.Format "2006-01-02 15:04:05"}}                                            
-{{- end }}
-│                                                                    │
-│ Please contact {{if .Email}}{{.Email}}{{else}}{{.LockedBy}}{{end}} for further details.             
-└────────────────────────────────────────────────────────────────────┘
-`
-	t, err := template.New("denyNotice").Parse(tmpl)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse template: %w", err)
-	}
+├────────────────────────────────────────────────────────────────────┤`
 
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("failed to execute template: %w", err)
+	const body = `
+│ This system is currently restricted to ensure exclusive access for │
+│ scheduled testing and/or maintenance. If you require access during │ 
+│ this lockout period please contact the lock holder for further     │
+│ assistance. <username>│
+│                                                                    │
+│ Locked by: <lockedBy>│
+│ Reason: <reason>│
+│                                                                    │`
+
+	const footer = `
+└────────────────────────────────────────────────────────────────────┘`
+
+	username := data.LockedBy
+	if data.Email != "" {
+		username += " (" + data.Email + ")"
 	}
-	return buf.String(), nil
+	username = username + strings.Repeat(" ", 55-len(username))
+	lockedBy := data.LockedBy + strings.Repeat(" ", 56-len(data.LockedBy))
+	reason := "-"
+	if data.Reason != "" {
+		reason = data.Reason
+	}
+	reason = reason + strings.Repeat(" ", 59-len(reason))
+	updatedBody := strings.Replace(body, "<lockedBy>", lockedBy, -1)
+	updatedBody = strings.Replace(updatedBody, "<username>", username, -1)
+	updatedBody = strings.Replace(updatedBody, "<reason>", reason, -1)
+
+	return header + updatedBody + footer, nil
 }
 
 // CheckAccess is used to determine if a user should be granted acccess to the system. It checks to see if the system
@@ -105,7 +105,7 @@ func CheckAccess(username string) (approved bool, reason string) {
 	cfg, _ := config.ReadConfiguration()
 	if cfg != nil {
 		lf, err = lock.ReadLockfile(cfg.LockFileLocation)
-		if err == os.ErrNotExist {
+		if os.IsNotExist(err) {
 			// If there is no lockfile then we can allow access
 			return true, ""
 		}
@@ -156,19 +156,36 @@ func CheckAccess(username string) (approved bool, reason string) {
 // CheckWarning is used to return a warning message to users that are authorized to use the system during the lock
 // to ensure that they are aware the system is currently locked.
 func CheckWarning() string {
-	// TODO: This should be templated and customizable by users.
-	return "\033[1;31m┌────────────────────────────────────────────────────────────────────┐\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;33m                        ADMIN WARNING                               \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m├────────────────────────────────────────────────────────────────────┤\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m WARNING: This system is currently locked by 'ben'.                 \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m Please be advised that the system is under a temporary lock.       \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m All critical operations and changes are restricted until the       \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m system is unlocked.                                                \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m Locked by: \033[1;32mben\033[0m\033[1;37m                                                     \033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m Unlock scheduled at: \033[1;32m2021-12-31 23:59:59\033[0m\033[1;37m                           \033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m Proceed with extreme caution and contact the locking authority if  \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m│\033[0m\033[1;37m you believe immediate action is required.                          \033[0m\033[1;31m│\033[0m\n" +
-		"\033[1;31m└────────────────────────────────────────────────────────────────────┘\033[0m"
+
+	// Pull the lockfile data
+	var lf *lock.LockFile
+	var err error
+	cfg, _ := config.ReadConfiguration()
+	if cfg != nil {
+		lf, err = lock.ReadLockfile(cfg.LockFileLocation)
+		if os.IsNotExist(err) {
+			// If there is no lockfile then we don't need any warnings
+			return ""
+		}
+	}
+
+	if lf != nil {
+		// TODO: This should be templated and customizable by users.
+		return "\033[1;31m┌────────────────────────────────────────────────────────────────────┐\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;33m                        ADMIN WARNING                               \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m├────────────────────────────────────────────────────────────────────┤\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m WARNING: This system is currently locked by 'ben'.                 \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m Please be advised that the system is under a temporary lock.       \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m All critical operations and changes are restricted until the       \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m system is unlocked.                                                \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m Locked by: \033[1;32mben\033[0m\033[1;37m                                                     \033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m Unlock scheduled at: \033[1;32m2021-12-31 23:59:59\033[0m\033[1;37m                           \033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m Proceed with extreme caution and contact the locking authority if  \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m you believe immediate action is required.                          \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m└────────────────────────────────────────────────────────────────────┘\033[0m"
+	}
+
+	return ""
 }
 
 // UserInGroup returns true if the given user is a member of the specified group.

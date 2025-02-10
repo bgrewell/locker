@@ -39,7 +39,7 @@ func ReadLockfile(path string) (*LockFile, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open lockfile: %w", err)
+		return nil, err
 	}
 	defer f.Close()
 
@@ -57,13 +57,13 @@ func (lf LockFile) WriteLockfile(path string) error {
 	// Open the file for writing
 	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("failed to create lockfile: %w", err)
+		return err
 	}
 
 	// Marshal the lockfile to json
 	data, err := json.MarshalIndent(lf, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal lockfile: %w", err)
+		return err
 	}
 
 	// Write the data to the file

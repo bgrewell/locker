@@ -179,6 +179,7 @@ func pam_sm_open_session(pamh *C.pam_handle_t, flags C.int, argc C.int, argv C.c
 		fmt.Printf("%s: pam_sm_open_session has been called\n", timestamp)
 	}
 
+	// TODO: CheckWarning missing logic
 	warning := access.CheckWarning()
 	if warning != "" {
 		// Send a message to the user explaining why access was denied
