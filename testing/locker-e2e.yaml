@@ -1,0 +1,36 @@
+---
+suite: Locker End-to-End Tests
+nodes:
+  - name: locker-test
+    type: lxd
+    options:
+      image: ubuntu:24.04
+      type: container
+setup:
+  - name: install locker
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "curl -sL https://bgrewell.github.io/locker/install.sh | sudo bash"
+  - name: create user bob
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "sudo useradd -m -s /bin/bash bob && echo "bob:password123" | sudo chpasswd"
+  - name: create user jim
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "sudo useradd -m -s /bin/bash jim && echo "jim:password123" | sudo chpasswd"
+tests:
+  - name: verify locker is installed
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "locker -h"
+        evaluate:
+          exit_code: 0
