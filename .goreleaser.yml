@@ -16,6 +16,11 @@ builds:
       - amd64
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - "-X 'main.version={{.Version}}'"
+      - "-X 'main.builddate={{.Date}}'"
+      - "-X 'main.commit={{.ShortCommit}}'"
+      - "-X 'main.branch={{.Tag}}'"
 
   - id: lockerd
     main: ./cmd/lockerd/main.go
@@ -26,6 +31,11 @@ builds:
       - amd64
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - "-X 'main.version={{.Version}}'"
+      - "-X 'main.builddate={{.Date}}'"
+      - "-X 'main.commit={{.ShortCommit}}'"
+      - "-X 'main.branch={{.Tag}}'"
 
   - id: pam_locker
     main: ./cmd/module/main.go
@@ -37,12 +47,15 @@ builds:
       - amd64
     env:
       - CGO_ENABLED=1
+    ldflags:
+      - "-X 'main.version={{.Version}}'"
+      - "-X 'main.builddate={{.Date}}'"
+      - "-X 'main.commit={{.ShortCommit}}'"
+      - "-X 'main.branch={{.Tag}}'"
 
 archives:
   - formats: ['tar.gz']
-    name_template: >-
-      {{ .ProjectName }}
-
+    name_template: "{{ .ProjectName }}"
     files:
       - ./LICENSE
       - ./README.md
