@@ -163,19 +163,23 @@ func CheckWarning() string {
 	}
 
 	if lf != nil {
-		// TODO: This should be templated and customizable by users.
-		return "\033[1;31m┌────────────────────────────────────────────────────────────────────┐\033[0m\n" +
+		warning := "\033[1;31m┌────────────────────────────────────────────────────────────────────┐\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;33m                        ADMIN WARNING                               \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m├────────────────────────────────────────────────────────────────────┤\033[0m\n" +
-			"\033[1;31m│\033[0m\033[1;37m WARNING: This system is currently locked by 'ben'.                 \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m WARNING: This system is currently locked.                          \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;37m Please be advised that the system is under a temporary lock.       \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;37m All critical operations and changes are restricted until the       \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;37m system is unlocked.                                                \033[0m\033[1;31m│\033[0m\n" +
-			"\033[1;31m│\033[0m\033[1;37m Locked by: \033[1;32mben\033[0m\033[1;37m                                                     \033[1;31m│\033[0m\n" +
-			"\033[1;31m│\033[0m\033[1;37m Unlock scheduled at: \033[1;32m2021-12-31 23:59:59\033[0m\033[1;37m                           \033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m                                                                    \033[0m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m Locked by: \033[1;32m<username>\033[0m\033[1;37m\033[1;31m│\033[0m\n" +
+			"\033[1;31m│\033[0m\033[1;37m                                                                    \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;37m Proceed with extreme caution and contact the locking authority if  \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m│\033[0m\033[1;37m you believe immediate action is required.                          \033[0m\033[1;31m│\033[0m\n" +
 			"\033[1;31m└────────────────────────────────────────────────────────────────────┘\033[0m"
+
+		username := lf.User + strings.Repeat(" ", 56-len(lf.User))
+		warning = strings.Replace(warning, "<username>", username, -1)
+		return warning
 	}
 
 	return ""
