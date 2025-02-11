@@ -1,30 +1,66 @@
 ---
 suite: Locker End-to-End Tests
 nodes:
+  - name: localhost
+    type: local
+    options:
+      shell: /bin/bash
   - name: locker-test
     type: lxd
     options:
       image: ubuntu:24.04
       type: container
 setup:
+  - name: ensure sshpass is installed
+    node: localhost
+    step:
+      type: apt
+      options:
+        packages:
+          - sshpass
+  - name: ensure dns is working
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: 'until nslookup github.com &>/dev/null; do sleep 1; done'
   - name: install locker
     node: locker-test
     step:
       type: execute
       options:
-        command: "curl -sL https://bgrewell.github.io/locker/install.sh | sudo bash"
+        command: "bash -o pipefail -c 'curl -fSL https://bgrewell.github.io/locker/install.sh | bash'"
   - name: create user bob
     node: locker-test
     step:
       type: execute
       options:
-        command: "sudo useradd -m -s /bin/bash bob && echo 'bob:password123' | sudo chpasswd"
+        command: "useradd -m -s /bin/bash bob && echo 'bob:password123' | chpasswd"
   - name: create user jim
     node: locker-test
     step:
       type: execute
       options:
-        command: "sudo useradd -m -s /bin/bash jim && echo 'jim:password123' | sudo chpasswd"
+        command: "useradd -m -s /bin/bash jim && echo 'jim:password123' | chpasswd"
+  - name: create user tom
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "useradd -m -s /bin/bash tom && echo 'tom:password123' | chpasswd"
+  - name: ensure password login is allowed
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "rm /etc/ssh/sshd_config.d/60-cloudimg-settings.conf"
+  - name: restart ssh
+    node: locker-test
+    step:
+      type: execute
+      options:
+        command: "systemctl restart ssh"
+
 tests:
   - name: verify locker is installed
     node: locker-test
@@ -32,4 +68,66 @@ tests:
     options:
       command: "locker -h"
       evaluate:
+        exit_code: 0
+  - name: test
+    node: localhost
+    type: execute
+    options:
+      command: "whoami"
+      evaluate:
+        match: "ben"
+  - name: ssh to locker-test as bob
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no bob@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') whoami"
+      evaluate:
+        match: "bob"
+        exit_code: 0
+  - name: ssh to locker-test as jim
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no jim@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') whoami"
+      evaluate:
+        match: "jim"
+        exit_code: 0
+  - name: lock system as jim
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no jim@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') locker -r test -u tom lock"
+      evaluate:
+        contains: "Lock acquired"
+        exit_code: 0
+  - name: ssh to locker-test as disallowed user bob
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no bob@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') echo test"
+      evaluate:
+        exit_code: 255
+  - name: ssh to locker-test as allowed user tom
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no tom@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') echo test"
+      evaluate:
+        match: test
+        exit_code: 0
+  - name: unlock system as jim
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no jim@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') unlock"
+      evaluate:
+        contains: "Lock released"
+        exit_code: 0
+  - name: verify bob can again access the system
+    node: localhost
+    type: execute
+    options:
+      command: "sshpass -p 'password123' ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=yes -o PubkeyAuthentication=no bob@$(lxc list --project default locker-test --format csv -c4 | awk '{print $1}') echo test"
+      evaluate:
+        match: test
         exit_code: 0
