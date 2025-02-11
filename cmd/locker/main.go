@@ -27,55 +27,6 @@ var (
 	branch    string
 )
 
-//// NewLockFile creates a new LockFile struct with the provided parameters.
-//func NewLockFile(reason string, unlockTime time.Time, unlockOnExit bool, allowedUsers, allowedGroups []string, logger *zap.Logger) (lockfile *LockFile, err error) {
-//
-//	// Use loginctl to get session information.
-//	sessionID, tty, userName, uid, err := getSessionStatus()
-//	logger.Debug("session information",
-//		zap.String("session_id", sessionID),
-//		zap.String("tty", tty),
-//		zap.String("user", userName),
-//		zap.Int("uid", uid))
-//	if err != nil {
-//		// If loginctl fails, fall back to os/user.
-//		cu, err2 := user.Current()
-//		if err2 != nil {
-//			return nil, fmt.Errorf("failed to get current user: %w (and loginctl error: %v)", err2, err)
-//		}
-//		userName = cu.Username
-//		uid, _ = strconv.Atoi(cu.Uid)
-//		tty = os.Getenv("SSH_TTY")
-//		sessionID = ""
-//	}
-//
-//	email, err := getUserEmail(userName)
-//	if err != nil {
-//		email = ""
-//		logger.Warn("failed to get email for user",
-//			zap.String("user", userName),
-//			zap.Error(err))
-//	} else {
-//		logger.Debug("email found",
-//			zap.String("email", email),
-//			zap.String("user", userName))
-//	}
-//
-//	return &LockFile{
-//		User:          userName,
-//		UID:           uid,
-//		Email:         email,
-//		Reason:        reason,
-//		Session:       sessionID,
-//		TTY:           tty,
-//		UnlockTime:    unlockTime,
-//		UnlockOnExit:  unlockOnExit,
-//		AllowedUsers:  allowedUsers,
-//		AllowedGroups: allowedGroups,
-//		logger:        logger,
-//	}, nil
-//}
-
 // getSessionStatus invokes "loginctl session-status --no-pager" and parses its output.
 // It returns the session ID, TTY, username, and UID.
 func getSessionStatus() (sessionID, tty, userName string, uid int, err error) {
@@ -211,14 +162,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if action == nil || *action == "" {
-		usageBuilder.PrintError(fmt.Errorf("Action is required. Use one of lock, unlock, or status"))
-		os.Exit(1)
-	}
-
 	if *help {
 		usageBuilder.PrintUsage()
 		os.Exit(0)
+	}
+
+	if action == nil || *action == "" {
+		usageBuilder.PrintError(fmt.Errorf("Action is required. Use one of lock, unlock, or status"))
+		os.Exit(1)
 	}
 
 	// Create a new logrus logger

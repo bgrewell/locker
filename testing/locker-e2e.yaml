@@ -18,19 +18,18 @@ setup:
     step:
       type: execute
       options:
-        command: "sudo useradd -m -s /bin/bash bob && echo "bob:password123" | sudo chpasswd"
+        command: "sudo useradd -m -s /bin/bash bob && echo 'bob:password123' | sudo chpasswd"
   - name: create user jim
     node: locker-test
     step:
       type: execute
       options:
-        command: "sudo useradd -m -s /bin/bash jim && echo "jim:password123" | sudo chpasswd"
+        command: "sudo useradd -m -s /bin/bash jim && echo 'jim:password123' | sudo chpasswd"
 tests:
   - name: verify locker is installed
     node: locker-test
-    step:
-      type: execute
-      options:
-        command: "locker -h"
-        evaluate:
-          exit_code: 0
+    type: execute
+    options:
+      command: "locker -h"
+      evaluate:
+        exit_code: 0
