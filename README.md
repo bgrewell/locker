@@ -1,11 +1,13 @@
 # Locker
 
+---
+
 Locker is an adaptable solution that lets you allocate and revoke system access on the fly, ensuring that specific users or groups can perform exclusive tasks—such as system maintenance, temporary collaboration, or uninterrupted processing—without interference from other accounts. By combining a PAM module, a lightweight background daemon, and a user-friendly CLI, Locker simplifies the process of dynamically granting or denying logins based on real-time requirements. 
 
 Please note that Locker is not intended to replace or enhance any native security infrastructure. It is designed purely as a convenience layer atop existing authentication and authorization systems, making it easier to manage who can log in at any given time for short-term or specialized needs.
 
-
 ---
+> **Notice:** This project is in an early development phase and may not yet be fully stable or feature complete. As it evolves, you may encounter significant changes to the API, behavior, and overall functionality.
 
 ## Table of Contents
 
