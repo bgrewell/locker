@@ -216,13 +216,84 @@ Then compile the proto definitions:
 
     make proto
 
-### Testing
+
+### Unit Testing
 
 Locker’s code can be tested with:
 
     go test ./...
 
-For integration testing, you may want to run Locker on a test VM or container to ensure the PAM module and systemd service function correctly.
+### End-to-End (Functional) Tests
+
+This project includes a suite of end-to-end (E2E) tests—sometimes called *functional tests*—which verify the full workflow of installing, configuring, and using Locker in a real(ish) environment. These tests help ensure that all parts of the system work together correctly under actual usage scenarios.
+
+### What Do the Tests Cover?
+- **Environment Setup**: Installs necessary dependencies (e.g., `sshpass`), ensures DNS is operational, and deploys the Locker binaries.
+- **User Management**: Creates test users (like `bob`, `jim`, `tom`) with different privileges or roles to check various access control scenarios.
+- **Locker Operations**: Tests locking and unlocking the system, verifying that only allowed users can access it while locked.
+- **SSH Connectivity**: Ensures that users who *should* be able to SSH in can do so, and those who *shouldn’t* cannot.
+
+A typical test run looks like this:
+
+```
+[+] Running test setup
+  running setup on localhost ......... done 
+  running setup on locker-test ....... done 
+  ensure sshpass is installed ........ done 
+  ensure dns is working .............. done 
+  install locker ..................... done 
+  create user bob .................... done 
+  create user jim .................... done 
+  create user tom .................... done 
+  ensure password login is allowed ... done 
+  restart ssh ........................ done 
+
+[+] Running tests
+  00001: verify locker is installed .................. passed
+  00002: test ........................................ passed
+  00003: ssh to locker-test as bob ................... passed
+  00004: ssh to locker-test as jim ................... passed
+  00005: lock system as jim .......................... passed
+  00006: ssh to locker-test as disallowed user bob ... passed
+  00007: ssh to locker-test as allowed user tom ...... passed
+  00008: unlock system as jim ........................ passed
+  00009: verify bob can again access the system ...... passed
+
+[+] Running test teardown
+  running teardown on localhost ...... done 
+  running teardown on locker-test .... done 
+
+[+] Results
+  Pass: 00009
+  Fail: 00000
+```
+
+### How to Run the Tests
+
+1. **Install or Update `dart`**  
+   The tests are orchestrated by [Dart](https://github.com/bgrewell/dart), a small testing framework. You can install it via:
+   ```bash
+   go install github.com/bgrewell/dart/cmd/dart@latest
+   ```
+   or use the provided Make target (`make install_dart`).
+
+2. **Run E2E Tests**  
+   Once Dart is installed, simply run:
+   ```bash
+   dart -c testing/locker-e2e.yaml
+   ```
+   or use the Make target:
+   ```bash
+   make test-e2e
+   ```
+   This spins up the environment, executes the tests, and tears everything down automatically.
+
+### Customizing or Extending Tests
+- You can modify the `testing/locker-e2e.yaml` file to add new scenarios or tweak existing ones (e.g., adding more test cases, different user setups, etc.).
+- The underlying approach supports multiple hosts or containers, so you can adapt it to more complex environments if needed.
+
+These end-to-end tests are an essential part of validating that **Locker** behaves correctly across installation, configuration, and usage, giving you confidence in each release.
+
 
 ---
 
