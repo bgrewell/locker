@@ -4,7 +4,7 @@ BUILD_DATE  ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "0000000")
 BRANCH      ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
-.PHONY: all clean proto install_protoc install_deps pam_locker
+.PHONY: all clean proto install_protoc install_deps pam_locker install_dart test-e2e
 
 all: proto locker lockerd pam_locker
 
@@ -52,3 +52,13 @@ install_deps:
 ## 6) Clean up binaries.
 clean:
 	rm -f bin/locker bin/lockerd bin/pam_locker.so bin/pam_locker.h
+
+## 7) Install the 'dart' test tool for running E2E tests.
+install_dart:
+	@echo "Installing dart test tool..."
+	go install github.com/bgrewell/dart/cmd/dart@latest
+
+## 8) Run end-to-end tests using dart.
+test-e2e: install_dart
+	@echo "Running end-to-end tests..."
+	dart -c testing/locker-e2e.yaml
